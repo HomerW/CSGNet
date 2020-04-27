@@ -4,13 +4,13 @@ from torch.autograd import Variable
 
 nllloss = nn.NLLLoss()
 
-def losses_joint(out, labels: torch._TensorBase, time_steps: int):
+def losses_joint(out, labels, time_steps: int):
     """
     Defines loss
     :param out: output from the network
     :param labels: Ground truth labels
     :param time_steps: Length of the program
-    :return loss: Sum of categorical losses 
+    :return loss: Sum of categorical losses
     """
     loss = Variable(torch.zeros(1)).cuda()
 

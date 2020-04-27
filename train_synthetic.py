@@ -2,14 +2,14 @@
 # trained better.
 """
 This trains network to predict stop symbol for variable length programs.
-Note that there is no padding done in RNN in contrast to traditional RNN for 
-variable length programs. This is mainly because of computational 
-efficiency of forward pass, that is, each batch contains only 
-programs of similar length, that implies that the program of smaller lengths 
+Note that there is no padding done in RNN in contrast to traditional RNN for
+variable length programs. This is mainly because of computational
+efficiency of forward pass, that is, each batch contains only
+programs of similar length, that implies that the program of smaller lengths
 are not processed by RNN for unnecessary time steps.
-Losses from all batches of different time-lengths are combined to compute 
+Losses from all batches of different time-lengths are combined to compute
 gradient and updated in the network in one go. This ensures that every update to
-the network has equal contribution (or weighted by the ratio of their 
+the network has equal contribution (or weighted by the ratio of their
 batch sizes) coming from programs of different lengths.
 """
 
@@ -18,7 +18,7 @@ import logging
 import numpy as np
 import torch
 import torch.optim as optim
-from tensorboard_logger import configure, log_value
+# from tensorboard_logger import configure, log_value
 from torch.autograd.variable import Variable
 
 from src.Models.loss import losses_joint
@@ -34,7 +34,7 @@ config = read_config.Config("config_synthetic.yml")
 model_name = config.model_path.format(config.mode)
 print(config.config, flush=True)
 config.write_config("log/configs/{}_config.json".format(model_name))
-configure("log/tensorboard/{}".format(model_name), flush_secs=5)
+# configure("log/tensorboard/{}".format(model_name), flush_secs=5)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s:%(name)s:%(message)s')
@@ -152,13 +152,13 @@ for epoch in range(config.epochs):
 
         optimizer.step()
         train_loss += loss
-        log_value('train_loss_batch',
-                  loss.cpu().numpy(),
-                  epoch * (config.train_size //
-                           (config.batch_size * config.num_traj)) + batch_idx)
+        # log_value('train_loss_batch',
+        #           loss.cpu().numpy(),
+        #           epoch * (config.train_size //
+        #                    (config.batch_size * config.num_traj)) + batch_idx)
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
-    log_value('train_loss', mean_train_loss.cpu().numpy(), epoch)
+    # log_value('train_loss', mean_train_loss.cpu().numpy(), epoch)
     imitate_net.eval()
     loss = Variable(torch.zeros(1)).cuda()
     metrics = {"cos": 0, "iou": 0, "cd": 0}
@@ -195,14 +195,14 @@ for epoch in range(config.epochs):
     metrics["cos"] = COS / config.test_size
     metrics["cd"] = CD / config.test_size
 
-    log_value('test_iou', metrics["iou"], epoch)
-    log_value('test_cosine', metrics["cos"], epoch)
-    log_value('test_CD', metrics["cd"], epoch)
+    # log_value('test_iou', metrics["iou"], epoch)
+    # log_value('test_cosine', metrics["cos"], epoch)
+    # log_value('test_CD', metrics["cd"], epoch)
 
     test_losses = loss.data
     test_loss = test_losses.cpu().numpy() / (config.test_size //
                                              (config.batch_size))
-    log_value('test_loss', test_loss, epoch)
+    # log_value('test_loss', test_loss, epoch)
     reduce_plat.reduce_on_plateu(metrics["cd"])
     logger.info("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {},"
                 "test_mse: {}".format(epoch, config.epochs,
