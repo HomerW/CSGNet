@@ -13,12 +13,9 @@ the network has equal contribution (or weighted by the ratio of their
 batch sizes) coming from programs of different lengths.
 """
 
-import logging
-
 import numpy as np
 import torch
 import torch.optim as optim
-# from tensorboard_logger import configure, log_value
 from torch.autograd.variable import Variable
 
 from src.Models.loss import losses_joint
@@ -31,22 +28,11 @@ from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
 
 config = read_config.Config("config_synthetic.yml")
 
-model_name = config.model_path.format(config.mode)
 print(config.config, flush=True)
-config.write_config("log/configs/{}_config.json".format(model_name))
-# configure("log/tensorboard/{}".format(model_name), flush_secs=5)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s:%(name)s:%(message)s')
-file_handler = logging.FileHandler(
-    'log/logger/{}.log'.format(model_name), mode='w')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
 
 # Encoder
 encoder_net = Encoder(config.encoder_drop)
 encoder_net.cuda()
-logger.info(config.config)
 
 data_labels_paths = {
     3: "data/synthetic/one_op/expressions.txt",
@@ -77,7 +63,15 @@ imitate_net = ImitateJoint(
 imitate_net.cuda()
 
 if config.preload_model:
-    imitate_net.load_state_dict(torch.load(config.pretrain_modelpath))
+    print("pre loading model")
+    pretrained_dict = torch.load(config.pretrain_modelpath)
+    imitate_net_dict = imitate_net.state_dict()
+    pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in imitate_net_dict
+    }
+    imitate_net_dict.update(pretrained_dict)
+    imitate_net.load_state_dict(imitate_net_dict)
 
 for param in imitate_net.parameters():
     param.requires_grad = True
@@ -96,8 +90,7 @@ reduce_plat = LearningRate(
     optimizer,
     init_lr=config.lr,
     lr_dacay_fact=0.2,
-    patience=config.patience,
-    logger=logger)
+    patience=config.patience)
 types_prog = len(dataset_sizes)
 train_gen_objs = {}
 test_gen_objs = {}

@@ -49,6 +49,17 @@ param data: program/shape pairs from generator
 return programs: inferred programs on real data
 """
 def train_inference(data):
+    pass
+
+"""
+Trains VAE to convergence on programs from inference network
+param data: programs for real data inferred by inference network
+return samples: program/shape pairs sampled from generator
+"""
+def train_generator(data):
+    pass
+
+def wake_sleep():
     config = read_config.Config("config_synthetic.yml")
 
     # Encoder
@@ -64,13 +75,15 @@ def train_inference(data):
         canvas_shape=config.canvas_shape)
     imitate_net.cuda()
 
+    imitate_net.load_state_dict(torch.load(config.pretrain_modelpath))
+
     for param in imitate_net.parameters():
         param.requires_grad = True
 
     for param in encoder_net.parameters():
         param.requires_grad = True
 
-    max_len = max(data_labels_paths.keys())
+    max_len = 15
 
     optimizer = optim.Adam(
         [para for para in imitate_net.parameters() if para.requires_grad],
@@ -81,8 +94,7 @@ def train_inference(data):
         optimizer,
         init_lr=config.lr,
         lr_dacay_fact=0.2,
-        patience=config.patience,
-        logger=logger)
+        patience=config.patience)
     types_prog = len(dataset_sizes)
     train_gen_objs = {}
     test_gen_objs = {}
@@ -182,16 +194,3 @@ def train_inference(data):
         reduce_plat.reduce_on_plateu(metrics["cd"])
 
         del test_losses, test_outputs
-        if prev_test_cd > metrics["cd"]:
-            print("Saving the Model weights based on CD", flush=True)
-            torch.save(imitate_net.state_dict(),
-                       "trained_models/{}.pth".format(model_name))
-            prev_test_cd = metrics["cd"]
-
-"""
-Trains VAE to convergence on programs from inference network
-param data: programs for real data inferred by inference network
-return samples: program/shape pairs sampled from generator
-"""
-def train_generator(data):
-    pass
