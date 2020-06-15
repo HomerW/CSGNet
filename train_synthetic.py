@@ -152,13 +152,10 @@ for epoch in range(config.epochs):
 
         optimizer.step()
         train_loss += loss
-        # log_value('train_loss_batch',
-        #           loss.cpu().numpy(),
-        #           epoch * (config.train_size //
-        #                    (config.batch_size * config.num_traj)) + batch_idx)
+        print(f"batch {batch_idx} train loss: {loss.cpu().numpy()}")
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
-    # log_value('train_loss', mean_train_loss.cpu().numpy(), epoch)
+    print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
     imitate_net.eval()
     loss = Variable(torch.zeros(1)).cuda()
     metrics = {"cos": 0, "iou": 0, "cd": 0}
@@ -195,23 +192,18 @@ for epoch in range(config.epochs):
     metrics["cos"] = COS / config.test_size
     metrics["cd"] = CD / config.test_size
 
-    # log_value('test_iou', metrics["iou"], epoch)
-    # log_value('test_cosine', metrics["cos"], epoch)
-    # log_value('test_CD', metrics["cd"], epoch)
-
     test_losses = loss.data
     test_loss = test_losses.cpu().numpy() / (config.test_size //
                                              (config.batch_size))
-    # log_value('test_loss', test_loss, epoch)
+
     reduce_plat.reduce_on_plateu(metrics["cd"])
-    logger.info("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {},"
+    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {},"
                 "test_mse: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(), test_loss,
                                       metrics["iou"], metrics["cd"]))
 
     del test_losses, test_outputs
     if prev_test_cd > metrics["cd"]:
-        logger.info("Saving the Model weights based on CD")
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
                    "trained_models/{}.pth".format(model_name))
