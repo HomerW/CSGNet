@@ -136,6 +136,9 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 outputs = imitate_net([data, one_hot_labels, k])
+                print(data.shape)
+                print(labels.shape)
+                print(len(outputs))
 
                 loss_k = (losses_joint(outputs, labels, time_steps=k + 1) / (
                     k + 1)) / len(data_labels_paths.keys()) / config.num_traj
@@ -159,27 +162,28 @@ for epoch in range(config.epochs):
         parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
         for k in data_labels_paths.keys():
-            data_, labels = next(test_gen_objs[k])
-            one_hot_labels = prepare_input_op(labels, len(
-                generator.unique_draw))
-            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
-            data = Variable(torch.from_numpy(data_), volatile=True).cuda()
-            labels = Variable(torch.from_numpy(labels)).cuda()
-            test_outputs = imitate_net([data, one_hot_labels, k])
-            loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
-                     (k + 1)) / types_prog
-            test_output = imitate_net.test([data, one_hot_labels, max_len])
-            pred_images, correct_prog, pred_prog = parser.get_final_canvas(
-                test_output, if_just_expressions=False, if_pred_images=True)
-            target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-            iou = np.sum(np.logical_and(target_images, pred_images),
-                         (1, 2)) / \
-                  np.sum(np.logical_or(target_images, pred_images),
-                         (1, 2))
-            cos = cosine_similarity(target_images, pred_images)
-            CD += np.sum(chamfer(target_images, pred_images))
-            IOU += np.sum(iou)
-            COS += np.sum(cos)
+            with torch.no_grad():
+                data_, labels = next(test_gen_objs[k])
+                one_hot_labels = prepare_input_op(labels, len(
+                    generator.unique_draw))
+                one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
+                data = Variable(torch.from_numpy(data_)).cuda()
+                labels = Variable(torch.from_numpy(labels)).cuda()
+                test_outputs = imitate_net([data, one_hot_labels, k])
+                loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
+                         (k + 1)) / types_prog
+                test_output = imitate_net.test([data, one_hot_labels, max_len])
+                pred_images, correct_prog, pred_prog = parser.get_final_canvas(
+                    test_output, if_just_expressions=False, if_pred_images=True)
+                target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+                iou = np.sum(np.logical_and(target_images, pred_images),
+                             (1, 2)) / \
+                      np.sum(np.logical_or(target_images, pred_images),
+                             (1, 2))
+                cos = cosine_similarity(target_images, pred_images)
+                CD += np.sum(chamfer(target_images, pred_images))
+                IOU += np.sum(iou)
+                COS += np.sum(cos)
 
     metrics["iou"] = IOU / config.test_size
     metrics["cos"] = COS / config.test_size
@@ -190,10 +194,9 @@ for epoch in range(config.epochs):
                                              (config.batch_size))
 
     reduce_plat.reduce_on_plateu(metrics["cd"])
-    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {},"
-                "test_mse: {}".format(epoch, config.epochs,
-                                      mean_train_loss.cpu().numpy(), test_loss,
-                                      metrics["iou"], metrics["cd"]))
+    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
+                                      mean_train_loss.cpu().numpy(),
+                                      metrics["iou"], metrics["cd"], test_loss,))
 
     del test_losses, test_outputs
     if prev_test_cd > metrics["cd"]:

@@ -72,10 +72,10 @@ for p in paths:
     generator = Generator()
     reinforce = Reinforce(unique_draws=unique_draw)
     data_set_path = "data/cad/cad.h5"
-    train_gen = generator.train_gen(
-        batch_size=config.batch_size, path=data_set_path, if_augment=False)
-    val_gen = generator.val_gen(
-        batch_size=config.batch_size, path=data_set_path, if_augment=False)
+    # train_gen = generator.train_gen(
+    #     batch_size=config.batch_size, path=data_set_path, if_augment=False)
+    # val_gen = generator.val_gen(
+    #     batch_size=config.batch_size, path=data_set_path, if_augment=False)
     test_gen = generator.test_gen(
         batch_size=config.batch_size, path=data_set_path, if_augment=False)
 

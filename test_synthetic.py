@@ -38,6 +38,8 @@ dataset_sizes = {
     13: [370000, 1000 * proportion]
 }
 
+dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
+
 generator = MixedGenerateData(data_labels_paths=data_labels_paths,
                               batch_size=config.batch_size,
                               canvas_shape=config.canvas_shape)
@@ -101,24 +103,25 @@ for jit in [True, False]:
     for k in dataset_sizes.keys():
         test_batch_size = config.batch_size
         for _ in range(dataset_sizes[k][1] // test_batch_size):
-            data_, labels = next(test_gen_objs[k])
-            one_hot_labels = prepare_input_op(labels,
-                                              len(generator.unique_draw))
-            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
-            data = Variable(torch.from_numpy(data_), volatile=True).cuda()
-            labels = Variable(torch.from_numpy(labels)).cuda()
-            test_output = imitate_net.test([data, one_hot_labels, max_len])
-            pred_images, correct_prog, pred_prog = parser.get_final_canvas(
-                test_output,
-                if_just_expressions=False,
-                if_pred_images=True)
-            target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-            targ_prog = parser.labels2exps(labels, k)
+            with torch.no_grad():
+                data_, labels = next(test_gen_objs[k])
+                one_hot_labels = prepare_input_op(labels,
+                                                  len(generator.unique_draw))
+                one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
+                data = Variable(torch.from_numpy(data_)).cuda()
+                labels = Variable(torch.from_numpy(labels)).cuda()
+                test_output = imitate_net.test([data, one_hot_labels, max_len])
+                pred_images, correct_prog, pred_prog = parser.get_final_canvas(
+                    test_output,
+                    if_just_expressions=False,
+                    if_pred_images=True)
+                target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+                targ_prog = parser.labels2exps(labels, k)
 
-            programs_tar[jit] += targ_prog
-            programs_pred[jit] += pred_prog
-            distance = chamfer(target_images, pred_images)
-            total_CD += np.sum(distance)
+                programs_tar[jit] += targ_prog
+                programs_pred[jit] += pred_prog
+                distance = chamfer(target_images, pred_images)
+                total_CD += np.sum(distance)
 
     over_all_CD[jit] = total_CD / total_size
 

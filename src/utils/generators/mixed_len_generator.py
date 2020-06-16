@@ -249,7 +249,7 @@ class Draw:
         xp = [center[0] + radius, center[0], center[0], center[0] - radius]
         yp = [center[1], center[1] + radius, center[1] - radius, center[1]]
 
-        rr, cc = draw.circle(*center, radius=radius, shape=self.canvas_shape)
+        rr, cc = draw.disk(tuple(center), radius=radius, shape=self.canvas_shape)
         arr[cc, rr] = True
         return arr
 

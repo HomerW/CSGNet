@@ -16,8 +16,6 @@ from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
 
-device = torch.device("cpu")
-
 VOCAB_SIZE = 400
 
 class VAE(nn.Module):
@@ -69,82 +67,3 @@ class VAE(nn.Module):
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
         return BCE + KLD
-
-model = VAE().to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
-# trains for 1 epoch
-def train(input):
-    model.train()
-    train_loss = 0
-    np.random.shuffle(input)
-    for i in range(0, len(input), config.batch_size):
-        batch = torch.stack(input[i:i+config.batch_size], dim=0)
-        batch = batch.to(device)
-        optimizer.zero_grad()
-        recon_batch, mu, logvar = model(batch)
-        loss = model.loss_function(recon_batch, batch, mu, logvar)
-        loss.backward()
-        train_loss += loss.item()
-        optimizer.step()
-
-    print(f"loss: {train_loss / (len(input) // config.batch_size)}")
-
-config = read_config.Config("config_synthetic.yml")
-
-data_labels_paths = {
-    3: "data/synthetic/one_op/expressions.txt",
-    # 5: "data/synthetic/two_ops/expressions.txt",
-    # 7: "data/synthetic/three_ops/expressions.txt"
-}
-
-# proportion is in percentage. vary from [1, 100].
-proportion = config.proportion
-dataset_sizes = {
-    3: [proportion * 250, proportion * 50],
-    # 5: [proportion * 1000, proportion * 100],
-    # 7: [proportion * 1500, proportion * 200]
-}
-
-generator = MixedGenerateData(
-    data_labels_paths=data_labels_paths,
-    batch_size=config.batch_size,
-    canvas_shape=config.canvas_shape)
-
-max_len = max(data_labels_paths.keys())
-
-types_prog = len(dataset_sizes)
-train_gen_objs = {}
-test_gen_objs = {}
-config.train_size = sum(dataset_sizes[k][0] for k in dataset_sizes.keys())
-config.test_size = sum(dataset_sizes[k][1] for k in dataset_sizes.keys())
-total_importance = sum(k for k in dataset_sizes.keys())
-for k in data_labels_paths.keys():
-    test_batch_size = int(config.batch_size * dataset_sizes[k][1] / \
-                          config.test_size)
-    # Acts as a curriculum learning
-    train_batch_size = config.batch_size // types_prog
-    train_gen_objs[k] = generator.get_train_data(
-        train_batch_size,
-        k,
-        num_train_images=dataset_sizes[k][0],
-        jitter_program=True)
-    test_gen_objs[k] = generator.get_test_data(
-        test_batch_size,
-        k,
-        num_train_images=dataset_sizes[k][0],
-        num_test_images=dataset_sizes[k][1],
-        jitter_program=True)
-
-data = []
-for batch_idx in range(config.test_size // (config.batch_size)):
-    _, labels = next(train_gen_objs[3])
-    one_hot_labels = prepare_input_op(labels,
-                                      len(generator.unique_draw))
-    one_hot_labels = Variable(
-        torch.from_numpy(one_hot_labels))
-    labels = Variable(torch.from_numpy(labels))
-    data += (one_hot_labels)
-
-for _ in range(100):
-    train(data)

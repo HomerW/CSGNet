@@ -100,8 +100,8 @@ def to_one_hot(vector, max_category):
 def cosine_similarity(arr1, arr2):
     arr1 = np.reshape(arr1, (arr1.shape[0], -1))
     arr2 = np.reshape(arr2, (arr2.shape[0], -1))
-    arr1 = normalize(arr1, "l2", 1)
-    arr2 = normalize(arr2, "l2", 1)
+    arr1 = normalize(arr1, "l2", axis=1)
+    arr2 = normalize(arr2, "l2", axis=1)
     similarity = np.multiply(arr1, arr2)
     similarity = np.sum(similarity, 1)
     return similarity
@@ -254,7 +254,7 @@ def beams_parser(all_beams, batch_size, beam_width=5):
             parent = w
             for t in range(T - 1, -1, -1):
                 temp.append(all_beams[t]["index"][batch, parent].data.cpu()
-                            .numpy()[0])
+                            .numpy())
                 parent = all_beams[t]["parent"][batch, parent]
             temp = temp[::-1]
             all_expression[batch].append(np.array(temp))

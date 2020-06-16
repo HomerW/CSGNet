@@ -20,7 +20,7 @@ from src.utils.train_utils import prepare_input_op, beams_parser, validity, imag
 from torch.autograd import Variable
 from src.utils.train_utils import chamfer
 
-REFINE = False
+REFINE = True
 SAVE_VIZ = False
 
 
@@ -97,12 +97,13 @@ for p in paths:
     CDs = 0
     Target_images = []
     for batch_idx in range(config.test_size // config.batch_size):
-        print(batch_idx)
-        data_ = next(test_gen)
-        labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
-        one_hot_labels = prepare_input_op(labels, len(unique_draw))
-        one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
-        data = Variable(torch.from_numpy(data_), volatile=True).cuda()
+        with torch.no_grad():
+            print(batch_idx)
+            data_ = next(test_gen)
+            labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
+            one_hot_labels = prepare_input_op(labels, len(unique_draw))
+            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
+            data = Variable(torch.from_numpy(data_)).cuda()
 
         all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
             [data, one_hot_labels], beam_width, max_len)
