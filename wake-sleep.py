@@ -26,9 +26,11 @@ from src.utils.generators.shapenet_generater import Generator
 from vae import VAE
 
 device = torch.device("cuda")
-dataset_size = 3000 # small for debugging purposes
-train_size = 2100
-test_size = 900
+train_size = 9000
+test_size = 1000
+vocab_size = 400
+generator_hidden_dim = 256
+generator_latent_dim = 20
 
 """
 Trains CSGNet to convergence on samples from generator network
@@ -37,6 +39,7 @@ TODO: train to convergence and not number of epochs
 def train_inference(inference_net, iter):
     config = read_config.Config("config_synthetic.yml")
     labels = torch.load(f"wake_sleep_data/generator/{iter}/labels.pt")
+    # labels = torch.from_numpy(torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_1.pt")).long()[:1000]
 
     max_len = 13
     with open("terminals.txt", "r") as file:
@@ -69,6 +72,10 @@ def train_inference(inference_net, iter):
         stack = np.pad(stack, (((max_len + 1) - stack.shape[0], 0), (0, 0), (0, 0), (0, 0)))
         stacks.append(stack)
     stacks = np.stack(stacks, 0).astype(dtype=np.float32)
+
+    # print(expressions)
+    # print(correct_programs)
+    print(f"NUM CORRECT PROGRAMS: {len(correct_programs)}")
 
     # pad labels with a stop symbol, should be correct but need to confirm this
     # since infer_programs currently outputs len 13 labels
@@ -177,8 +184,9 @@ TODO: train to convergence and not number of epochs
 def train_generator(generator_net, iter):
     labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_5.pt")
 
-    programs = F.one_hot(torch.from_numpy(labels).long(), num_classes=400)
-    programs = programs.float()
+    # pad with a start and stop token
+    labels = np.pad(labels, ((0, 0), (1, 0)), constant_values=399)
+    labels = np.pad(labels, ((0, 0), (0, 1)), constant_values=399)
 
     batch_size = 100
 
@@ -186,23 +194,37 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for _ in range(100):
+    for epoch in range(300):
         train_loss = 0
-        np.random.shuffle(programs)
-        for i in range(0, len(programs), batch_size):
-            batch = programs[i:i+batch_size].to(device)
+        np.random.shuffle(labels)
+        for i in range(0, len(labels), batch_size):
+            batch = torch.from_numpy(labels[i:i+batch_size]).long().to(device)
             optimizer.zero_grad()
             recon_batch, mu, logvar = generator_net(batch)
+            # remove start token for decoder labels
+            batch = batch[:, 1:]
             loss = generator_net.loss_function(recon_batch, batch, mu, logvar)
             loss.backward()
             train_loss += loss.item()
             optimizer.step()
-        print(f"generator loss: {train_loss / (len(programs) // batch_size)}")
+        print(f"generator epoch {epoch} loss: {train_loss / (len(labels) * (labels.shape[1]-1))} \
+                accuracy: {(recon_batch.permute(1, 2, 0).max(dim=1)[1] == batch).float().sum()/(batch.shape[0]*batch.shape[1])}")
 
-    sample = torch.randn(dataset_size, 20).to(device)
-    sample = generator_net.decode(sample, programs.shape[1]).cpu()
+
+    # small_sample = torch.from_numpy(labels[:5]).long().to(device)
+    # small_result = generator_net(small_sample)[0].permute(1, 2, 0).max(dim=1)[1]
+    #
+    # print(small_sample)
+    # print(small_result)
+
+    # need to batch here so I can take more samples
+    sample = torch.randn(3000, generator_latent_dim).to(device)
+    sample = generator_net.decode(sample, None, labels.shape[1] - 1).cpu()
     # (batch_size, timesteps)
     _, sample = sample.permute(1, 0, 2).max(dim=2)
+
+    # remove start and stop token
+    sample = sample[:, 1:-1]
 
     os.makedirs(os.path.dirname(f"wake_sleep_data/generator/{iter}/"), exist_ok=True)
     torch.save(sample, f"wake_sleep_data/generator/{iter}/labels.pt")
@@ -229,13 +251,13 @@ def infer_programs(inference_net, iter):
 
     max_len = 13
     beam_width = 5
-    config.test_size = dataset_size
+    config.train_size = 10000
     imitate_net.eval()
     imitate_net.epsilon = 0
     parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                               config.canvas_shape)
     pred_expressions = []
-    pred_labels = np.zeros((config.test_size, max_len))
+    pred_labels = np.zeros((config.train_size, max_len))
     image_path = f"wake_sleep_data/inference/{iter}/images/"
     expressions_path = f"wake_sleep_data/inference/{iter}/expressions/"
     results_path = f"wake_sleep_data/inference/{iter}/results/"
@@ -250,8 +272,7 @@ def infer_programs(inference_net, iter):
 
     generator = Generator()
 
-    # just using test data right now for debugging purposes
-    test_gen = generator.test_gen(
+    train_gen = generator.train_gen(
         batch_size=config.batch_size,
         path="data/cad/cad.h5",
         if_augment=False)
@@ -259,10 +280,10 @@ def infer_programs(inference_net, iter):
     Rs = 0
     CDs = 0
     Target_images = []
-    for batch_idx in range(config.test_size // config.batch_size):
+    for batch_idx in range(config.train_size // config.batch_size):
         with torch.no_grad():
             print(batch_idx)
-            data_ = next(test_gen)
+            data_ = next(train_gen)
             labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
             one_hot_labels = prepare_input_op(labels, len(unique_draw))
             one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
@@ -338,7 +359,7 @@ def infer_programs(inference_net, iter):
 
     print(
         "average chamfer distance: {}".format(
-            CDs / (config.test_size // config.batch_size)),
+            CDs / (config.train_size // config.batch_size)),
         flush=True)
 
     if refine:
@@ -369,8 +390,8 @@ def infer_programs(inference_net, iter):
             for index, value in enumerate(tweaked_expressions):
                 file.write(value + "\n")
 
-    Rs = Rs / (config.test_size // config.batch_size)
-    CDs = CDs / (config.test_size // config.batch_size)
+    Rs = Rs / (config.train_size // config.batch_size)
+    CDs = CDs / (config.train_size // config.batch_size)
     print(Rs, CDs)
     if refine:
         results = {
@@ -389,6 +410,8 @@ def infer_programs(inference_net, iter):
     with open(results_path + "results_beam_width_{}.org".format(beam_width),
               'w') as outfile:
         json.dump(results, outfile)
+
+    print(pred_labels.shape)
 
     torch.save(pred_labels, labels_path + "labels_beam_width_{}.pt".format(beam_width))
 
@@ -440,11 +463,11 @@ Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
     csgnet = get_csgnet()
-    generator_net = VAE().to(device)
+    generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size).to(device)
 
     for i in range(iterations):
-        infer_programs(csgnet, i)
+        # infer_programs(csgnet, i)
         train_generator(generator_net, i)
         train_inference(csgnet, i)
 
-wake_sleep(2)
+wake_sleep(1)
