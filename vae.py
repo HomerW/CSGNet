@@ -57,9 +57,13 @@ class VAE(nn.Module):
             init_seq = torch.cat([z_seq, stop_seq], 2)
             init_state = self.initial_decoder_state.repeat(1, z.shape[0], 1)
             final_output, h = self.decode_gru(init_seq, init_state)
+            # _, prev_output_token = final_output.max(dim=2)
             # loop through sequence using decoded output (plus latent code) and hidden state as next input
             for _ in range(timesteps):
                 output, h = self.decode_gru(torch.cat([final_output[-1:], z_seq], 2), h)
+                # op_indices = np.argwhere(output_token.numpy() >= 396)
+                # output = output.numpy()[op_indices]
+                # _, output_token = output.max(dim=2)
                 final_output = torch.cat((final_output, output), 0)
             return self.dense(final_output)
 
