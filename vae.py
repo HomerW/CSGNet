@@ -51,21 +51,20 @@ class VAE(nn.Module):
         # sampling
         else:
             # start with just stop token (399)
-            stop_seq = self.decode_embed(torch.full((1, z.shape[0]), 399, dtype=torch.long).long().cuda())
+            stop_seq = self.decode_embed(torch.full((1, z.shape[0]), 399, dtype=torch.long).long())
             z_seq = torch.reshape(z, (1, z.shape[0], z.shape[1]))
             # concatentate latent code with token
             init_seq = torch.cat([z_seq, stop_seq], 2)
             init_state = self.initial_decoder_state.repeat(1, z.shape[0], 1)
-            final_output, h = self.decode_gru(init_seq, init_state)
-            # _, prev_output_token = final_output.max(dim=2)
+
+            output, h = self.decode_gru(init_seq, init_state)
+            prev_output = self.decode_embed(torch.argmax(self.dense(output), dim=2))
+
             # loop through sequence using decoded output (plus latent code) and hidden state as next input
             for _ in range(timesteps):
-                output, h = self.decode_gru(torch.cat([final_output[-1:], z_seq], 2), h)
-                # op_indices = np.argwhere(output_token.numpy() >= 396)
-                # output = output.numpy()[op_indices]
-                # _, output_token = output.max(dim=2)
-                final_output = torch.cat((final_output, output), 0)
-            return self.dense(final_output)
+                output, _ = self.decode_gru(torch.cat([prev_output[-1:], z_seq], 2), h)
+                prev_output = torch.cat((prev_output, self.decode_embed(torch.argmax(self.dense(output), dim=2))), 0)
+            return self.dense(prev_output)
 
     def forward(self, x):
         # shape of x should be (timesteps, batch_size)
@@ -89,3 +88,41 @@ class VAE(nn.Module):
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
         return BCE + KLD
+
+    # def clean(self, prev_output, next_output, timesteps):
+    #     """
+    #     Zeros logits in next output that would create an invalid program
+    #     reruns gru
+    #     """
+    #     prev_seq = torch.argmax(self.dense(prev_output), dim=2)
+    #     cleaned = np.zeros(next_output.shape)
+    #
+    #     # maybe a way to batch this but unsure at the moment
+    #     for j in range(prev_seq.shape[1])
+    #         seq = prev_seq[:, j]
+    #
+    #         num_draws = 0
+    #         num_ops = 0
+    #         for i, t in enumerate(seq):
+    #             if t < 396:
+    #                 # draw a shape on canvas kind of operation
+    #                 num_draws += 1
+    #             elif t >= 396 and t < 399:
+    #                 # +, *, - kind of operation
+    #                 num_ops += 1
+    #             elif t == 399:
+    #                 # Stop symbol, no need to process further
+    #                 if num_draws > ((len(seq) - 1) // 2 + 1):
+    #                     return False
+    #                 if not (num_draws > num_ops):
+    #                     return False
+    #                 return (num_draws - 1) == num_ops
+    #
+    #             if num_draws <= num_ops:
+    #                 # condition where number of operands are lesser than 2
+    #                 return False
+    #             if num_draws > (timesteps // 2 + 1):
+    #                 # condition for stack over flow
+    #                 return False
+    #
+    #         return (num_draws - 1) == num_ops

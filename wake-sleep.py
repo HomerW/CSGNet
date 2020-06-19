@@ -25,7 +25,7 @@ import sys
 from src.utils.generators.shapenet_generater import Generator
 from vae import VAE
 
-device = torch.device("cuda")
+device = torch.device("cpu")
 train_size = 9000
 test_size = 1000
 vocab_size = 400
@@ -38,8 +38,8 @@ TODO: train to convergence and not number of epochs
 """
 def train_inference(inference_net, iter):
     config = read_config.Config("config_synthetic.yml")
-    labels = torch.load(f"wake_sleep_data/generator/{iter}/labels.pt")
-    # labels = torch.from_numpy(torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_1.pt")).long()[:1000]
+    labels = torch.load(f"wake_sleep_data/generator/{iter}/labels.pt", map_location=device)
+    # labels = torch.from_numpy(torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_1.pt", map_location=device)).long()[:1000]
 
     max_len = 13
     with open("terminals.txt", "r") as file:
@@ -111,7 +111,7 @@ def train_inference(inference_net, iter):
         for batch_idx in range(train_size //
                                (config.batch_size * config.num_traj)):
             optimizer.zero_grad()
-            loss = Variable(torch.zeros(1)).cuda().data
+            loss = Variable(torch.zeros(1)).to(device).data
             for _ in range(config.num_traj):
                 batch_data = train_data[:, batch_idx:batch_idx+config.batch_size].to(device)
                 batch_labels = train_labels[batch_idx:batch_idx+config.batch_size].to(device)
@@ -134,7 +134,7 @@ def train_inference(inference_net, iter):
         mean_train_loss = train_loss / (train_size // (config.batch_size))
         print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
         imitate_net.eval()
-        loss = Variable(torch.zeros(1)).cuda()
+        loss = Variable(torch.zeros(1)).to(device)
         metrics = {"cos": 0, "iou": 0, "cd": 0}
         IOU = 0
         COS = 0
@@ -182,7 +182,7 @@ Trains VAE to convergence on programs from inference network
 TODO: train to convergence and not number of epochs
 """
 def train_generator(generator_net, iter):
-    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_5.pt")
+    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_5.pt", map_location=device)
 
     # pad with a start and stop token
     labels = np.pad(labels, ((0, 0), (1, 0)), constant_values=399)
@@ -194,7 +194,7 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for epoch in range(300):
+    for epoch in range(1):
         train_loss = 0
         np.random.shuffle(labels)
         for i in range(0, len(labels), batch_size):
@@ -218,7 +218,7 @@ def train_generator(generator_net, iter):
     # print(small_result)
 
     # need to batch here so I can take more samples
-    sample = torch.randn(3000, generator_latent_dim).to(device)
+    sample = torch.randn(100, generator_latent_dim).to(device)
     sample = generator_net.decode(sample, None, labels.shape[1] - 1).cpu()
     # (batch_size, timesteps)
     _, sample = sample.permute(1, 0, 2).max(dim=2)
@@ -441,7 +441,7 @@ def get_csgnet():
     imitate_net.to(device)
 
     print("pre loading model")
-    pretrained_dict = torch.load(config.pretrain_modelpath)
+    pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
     imitate_net_dict = imitate_net.state_dict()
     pretrained_dict = {
         k: v
