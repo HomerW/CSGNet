@@ -16,6 +16,8 @@ from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
 
+device = torch.device("cuda")
+
 class VAE(nn.Module):
     def __init__(self, hidden_dim, latent_dim, vocab_size):
         super(VAE, self).__init__()
@@ -25,7 +27,8 @@ class VAE(nn.Module):
         self.encode_gru = nn.GRU(hidden_dim, hidden_dim)
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
-        self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
+        # self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
+        self.decode_gru = nn.GRU(latent_dim, hidden_dim)
         self.dense = nn.Linear(hidden_dim, vocab_size)
         self.initial_encoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
         self.initial_decoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
@@ -40,31 +43,34 @@ class VAE(nn.Module):
         eps = torch.randn_like(std)
         return mu + eps*std
 
-    def decode(self, z, decoder_input, timesteps=None):
+    def decode(self, z, decoder_input=None, timesteps=None):
+        init_state = self.initial_decoder_state.repeat(1, z.shape[1], 1)
+        output, h = self.decode_gru(z.repeat(timesteps, 1, 1), init_state)
+        return self.dense(output)
         # training
-        if decoder_input is not None:
-            # concatentate latent code with input sequence
-            comb_input = torch.cat([z.repeat(decoder_input.shape[0], 1, 1), self.decode_embed(decoder_input)], 2)
-            init_state = self.initial_decoder_state.repeat(1, decoder_input.shape[1], 1)
-            output, h = self.decode_gru(comb_input, init_state)
-            return self.dense(output)
-        # sampling
-        else:
-            # start with just stop token (399)
-            stop_seq = self.decode_embed(torch.full((1, z.shape[0]), 399, dtype=torch.long).long())
-            z_seq = torch.reshape(z, (1, z.shape[0], z.shape[1]))
-            # concatentate latent code with token
-            init_seq = torch.cat([z_seq, stop_seq], 2)
-            init_state = self.initial_decoder_state.repeat(1, z.shape[0], 1)
-
-            output, h = self.decode_gru(init_seq, init_state)
-            prev_output = self.decode_embed(torch.argmax(self.dense(output), dim=2))
-
-            # loop through sequence using decoded output (plus latent code) and hidden state as next input
-            for _ in range(timesteps):
-                output, _ = self.decode_gru(torch.cat([prev_output[-1:], z_seq], 2), h)
-                prev_output = torch.cat((prev_output, self.decode_embed(torch.argmax(self.dense(output), dim=2))), 0)
-            return self.dense(prev_output)
+        # if decoder_input is not None:
+        #     # concatentate latent code with input sequence
+        #     comb_input = torch.cat([z.repeat(decoder_input.shape[0], 1, 1), self.decode_embed(decoder_input)], 2)
+        #     init_state = self.initial_decoder_state.repeat(1, decoder_input.shape[1], 1)
+        #     output, h = self.decode_gru(comb_input, init_state)
+        #     return self.dense(output)
+        # # sampling
+        # else:
+        #     # start with just stop token (399)
+        #     stop_seq = self.decode_embed(torch.full((1, z.shape[0]), 399, dtype=torch.long).to(device).long())
+        #     z_seq = torch.reshape(z, (1, z.shape[0], z.shape[1]))
+        #     # concatentate latent code with token
+        #     init_seq = torch.cat([z_seq, stop_seq], 2)
+        #     init_state = self.initial_decoder_state.repeat(1, z.shape[0], 1)
+        #
+        #     output, h = self.decode_gru(init_seq, init_state)
+        #     prev_output = self.decode_embed(torch.argmax(self.dense(output), dim=2))
+        #
+        #     # loop through sequence using decoded output (plus latent code) and hidden state as next input
+        #     for _ in range(timesteps-1):
+        #         output, h = self.decode_gru(torch.cat([z_seq, prev_output[-1:]], 2), h)
+        #         prev_output = torch.cat([prev_output, self.decode_embed(torch.argmax(self.dense(output), dim=2))], 0)
+        #     return self.dense(prev_output)
 
     def forward(self, x):
         # shape of x should be (timesteps, batch_size)
@@ -73,7 +79,7 @@ class VAE(nn.Module):
         decoder_input = x[:-1, :]
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        return self.decode(z, decoder_input), mu, logvar
+        return self.decode(z, decoder_input, decoder_input.shape[0]), mu, logvar
 
     # Reconstruction + KL divergence losses summed over all elements and batch
     def loss_function(self, recon_x, x, mu, logvar):
