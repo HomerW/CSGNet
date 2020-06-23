@@ -51,14 +51,6 @@ def train_inference(inference_net, iter):
     train_gen = generator.get_train_data()
     test_gen = generator.get_test_data()
 
-    # batch_data, batch_labels = next(train_gen)
-    # f, a = plt.subplots(1, 10)
-    # for j in range(10):
-    #     a[j].imshow(batch_data[-1, j, 0, :, :], cmap="Greys_r")
-    #     a[j].axis("off")
-    # plt.savefig("first10gen.png")
-    # plt.close("all")
-
     encoder_net, imitate_net = inference_net
 
     optimizer = optim.Adam(
@@ -75,7 +67,7 @@ def train_inference(inference_net, iter):
     prev_test_loss = 1e20
     prev_test_cd = 1e20
     prev_test_iou = 0
-    for epoch in range(30):
+    for epoch in range(100):
         train_loss = 0
         Accuracies = []
         imitate_net.train()
@@ -169,7 +161,7 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for epoch in range(400):
+    for epoch in range(500):
         train_loss = 0
         np.random.shuffle(labels)
         for i in range(0, len(labels), batch_size):
@@ -326,6 +318,8 @@ def infer_programs(inference_net, iter):
                     transparent=0)
                 plt.close("all")
 
+                save_viz = False
+
     print(
         "Inferring cad average chamfer distance: {}".format(
             CDs / (config.train_size // config.batch_size)),
@@ -425,23 +419,59 @@ def get_csgnet():
 
     return (encoder_net, imitate_net)
 
+def load_generate(iter):
+    generator = WakeSleepGen(f"wake_sleep_data/generator/{iter}/labels.pt")
+
+    train_gen = generator.get_train_data()
+
+    batch_data, batch_labels = next(train_gen)
+    f, a = plt.subplots(1, 10, figsize=(30, 3))
+    for j in range(10):
+        a[j].imshow(batch_data[-1, j, 0, :, :], cmap="Greys_r")
+        a[j].axis("off")
+    plt.savefig("10.png")
+    plt.close("all")
+
+def load_infer(iter):
+    encoder_net, imitate_net = get_csgnet()
+    print("pre loading model")
+    pretrained_dict = torch.load(f"trained_models/imitate-{iter}.pth")
+    imitate_net_dict = imitate_net.state_dict()
+    pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in imitate_net_dict
+    }
+    imitate_net_dict.update(pretrained_dict)
+    imitate_net.load_state_dict(imitate_net_dict)
+
+    pretrained_dict = torch.load(f"trained_models/encoder-{iter}.pth")
+    encoder_net_dict = encoder_net.state_dict()
+    pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in encoder_net_dict
+    }
+    encoder_net_dict.update(pretrained_dict)
+    encoder_net.load_state_dict(encoder_net_dict)
+
+    infer_programs((encoder_net, imitate_net), iter)
+
 """
 Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
-    imitate_net, encoder_net = get_csgnet()
+    encoder_net, imitate_net = get_csgnet()
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size).to(device)
 
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
         if not i == 0: # already inferred initial cad programs using pretrained model
-            infer_programs((imitate_net, encoder_net), i)
+            infer_programs((encoder_net, imitate_net), i)
         train_generator(generator_net, i)
-        train_inference((imitate_net, encoder_net), i)
+        train_inference((encoder_net, imitate_net), i)
 
         torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
         torch.save(encoder_net.state_dict(), f"trained_models/encoder-{i}.pth")
         torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
-
 wake_sleep(50)
+# load_generate(16)
