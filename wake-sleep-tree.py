@@ -13,7 +13,7 @@ from src.Models.models import Encoder
 from src.Models.models import ImitateJoint, ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
-from src.utils.generators.wake_sleep_gen import WakeSleepGen
+from src.utils.generators.wake_sleep_gen_tree import WakeSleepGen
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, beams_parser, validity, image_from_expressions, stack_from_expressions
 import matplotlib
@@ -24,10 +24,10 @@ import os
 import json
 import sys
 from src.utils.generators.shapenet_generater import Generator
-from vae import VAE
+from vae_tree import VAE
 
-device = torch.device("cuda")
-inference_train_size = 10000
+device = torch.device("cpu")
+inference_train_size = 50000
 inference_test_size = 1000
 vocab_size = 400
 generator_hidden_dim = 256
@@ -67,11 +67,7 @@ def train_inference(inference_net, iter):
     prev_test_loss = 1e20
     prev_test_cd = 1e20
     prev_test_iou = 0
-
-    patience = 2
-    num_worse = 0
-
-    for epoch in range(30):
+    for epoch in range(15):
         train_loss = 0
         Accuracies = []
         imitate_net.train()
@@ -138,14 +134,6 @@ def train_inference(inference_net, iter):
         test_losses = loss.data
         test_loss = test_losses.cpu().numpy() / (inference_test_size //
                                                  (config.batch_size))
-
-        if test_loss >= prev_test_loss:
-            num_worse += 1
-        else:
-            num_worse = 0
-        if num_worse >= patience:
-            break
-        prev_test_loss = test_loss
 
         reduce_plat.reduce_on_plateu(metrics["cd"])
         print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
