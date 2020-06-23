@@ -27,7 +27,7 @@ from src.utils.generators.shapenet_generater import Generator
 from vae import VAE
 
 device = torch.device("cuda")
-inference_train_size = 10000
+inference_train_size = 100000
 inference_test_size = 1000
 vocab_size = 400
 generator_hidden_dim = 256
@@ -67,7 +67,7 @@ def train_inference(inference_net, iter):
     prev_test_loss = 1e20
     prev_test_cd = 1e20
     prev_test_iou = 0
-    for epoch in range(100):
+    for epoch in range(30):
         train_loss = 0
         Accuracies = []
         imitate_net.train()
