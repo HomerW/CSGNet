@@ -68,7 +68,7 @@ def train_inference(inference_net, iter):
     prev_test_cd = 1e20
     prev_test_iou = 0
 
-    patience = 2
+    patience = 3
     num_worse = 0
 
     for epoch in range(30):
@@ -141,8 +141,8 @@ def train_inference(inference_net, iter):
 
         if test_loss >= prev_test_loss:
             num_worse += 1
-        else:
-            num_worse = 0
+        # else:
+        #     num_worse = 0
         if num_worse >= patience:
             break
         prev_test_loss = test_loss
