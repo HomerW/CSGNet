@@ -14,18 +14,23 @@ class WakeSleepGen:
 
     def __init__(self,
                  labels_path,
+                 test_labels_path,
                  batch_size=100,
                  train_size=10000,
-                 test_size=1000,
+                 test_size=3000,
                  canvas_shape=[64, 64],
                  max_len=13):
 
         self.labels = torch.load(labels_path, map_location=device)
         self.labels = torch.from_numpy(self.labels).long()
 
+        self.test_labels = torch.load(test_labels_path, map_location=device)
+        self.test_labels = torch.from_numpy(self.test_labels).long()
+
         # pad labels with a stop symbol, should be correct but need to confirm this
         # since infer_programs currently outputs len 13 labels
         self.labels = F.pad(self.labels, (0, 1), 'constant', 399)
+        self.test_labels = F.pad(self.test_labels, (0, 1), 'constant', 399)
 
         self.train_size = train_size
         self.test_size = test_size
@@ -40,13 +45,22 @@ class WakeSleepGen:
 
         self.parser = ParseModelOutput(unique_draw, self.max_len // 2 + 1, self.max_len, canvas_shape)
         self.expressions = self.parser.labels2exps(self.labels, self.labels.shape[1])
+        self.test_expressions = self.parser.labels2exps(self.test_labels, self.test_labels.shape[1])
         # Remove the stop symbol and later part of the expression
         for index, exp in enumerate(self.expressions):
             self.expressions[index] = exp.split("$")[0]
+        for index, exp in enumerate(self.test_expressions):
+            self.test_expressions[index] = exp.split("$")[0]
         self.correct_programs = []
 
     def get_train_data(self):
         while True:
+            # full shuffle, only effective if train/test size smaller than inferred programs
+            ids = np.arange(len(self.expressions))
+            np.random.shuffle(ids)
+            self.expressions = [self.expressions[index] for index in ids]
+            self.labels = self.labels[ids]
+
             self.correct_programs = []
             ids = np.arange(self.train_size)
             np.random.shuffle(ids)
@@ -81,10 +95,16 @@ class WakeSleepGen:
 
     def get_test_data(self):
         while True:
-            for i in range(self.train_size, self.train_size+self.test_size, self.batch_size):
+            # full shuffle, only effective if train/test size smaller than inferred programs
+            ids = np.arange(len(self.test_expressions))
+            np.random.shuffle(ids)
+            self.test_expressions = [self.test_expressions[index] for index in ids]
+            self.test_labels = self.test_labels[ids]
+
+            for i in range(0, self.test_size, self.batch_size):
                 stacks = []
-                batch_exp = self.expressions[i:i+self.batch_size]
-                batch_labels = self.labels[i:i+self.batch_size]
+                batch_exp = self.test_expressions[i:i+self.batch_size]
+                batch_labels = self.test_labels[i:i+self.batch_size]
 
                 for index, exp in enumerate(batch_exp):
                     program = self.parser.Parser.parse(exp)

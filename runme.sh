@@ -19,11 +19,11 @@
 #    just run 'source activate', because the necessarily bits of .bash_profile that
 #    put 'activate' in your path don't run when a grid session starts up.
 virtual_env='csgnet_venv'
-source ~/research/CSGNet/csgnet_venv/bin/activate
+source /data/drlab/hwalke/csgnet_venv/bin/activate
 echo $virtual_env activated
 
 # Run whatever training script you have
 # You don't need to prepend 'CUDA_VISIBLE_DEVICES' here, because GridEngine will ensure
 #    that your script runs in an environment with only a certain number of GPUs visible
 #    (Specifically, the number you requested with '-l gpus')
-python -u wake-sleep.py > grid.out
+python -u wake-sleep-simple.py > grid.out

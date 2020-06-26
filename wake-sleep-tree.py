@@ -1,5 +1,3 @@
-from __future__ import print_function
-import argparse
 import torch
 import torch.utils.data
 from torch import nn, optim
@@ -150,7 +148,7 @@ Trains VAE to convergence on programs from inference network
 TODO: train to convergence and not number of epochs
 """
 def train_generator(generator_net, iter):
-    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_5.pt", map_location=device)
+    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_10.pt", map_location=device)
     trees = list(map(label_to_tree, labels))
 
     optimizer = optim.Adam(generator_net.parameters(), lr=1e-3)

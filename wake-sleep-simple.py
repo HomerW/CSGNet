@@ -22,15 +22,14 @@ import os
 import json
 import sys
 from src.utils.generators.shapenet_generater import Generator
-from vae import VAE
 from ws_infer import infer_programs
 
 device = torch.device("cuda")
 inference_train_size = 10000
-inference_test_size = 1000
+inference_test_size = 3000
+# inference_train_size = 500
+# inference_test_size = 100
 vocab_size = 400
-generator_hidden_dim = 256
-generator_latent_dim = 20
 max_len = 13
 
 """
@@ -40,8 +39,8 @@ TODO: train to convergence and not number of epochs
 def train_inference(inference_net, iter):
     config = read_config.Config("config_synthetic.yml")
 
-    generator = WakeSleepGen(f"wake_sleep_data/generator/{iter}/labels.pt",
-                             f"wake_sleep_data/generator/{iter}/val/labels.pt",
+    generator = WakeSleepGen(f"wake_sleep_data/inference/{iter}/labels/labels.pt",
+                             f"wake_sleep_data/inference/{iter}/labels/val/labels.pt",
                              batch_size=config.batch_size,
                              train_size=inference_train_size,
                              test_size=inference_test_size,
@@ -68,10 +67,10 @@ def train_inference(inference_net, iter):
     prev_test_cd = 1e20
     prev_test_iou = 0
 
-    patience = 3
+    patience = 5
     num_worse = 0
 
-    for epoch in range(30):
+    for epoch in range(50):
         train_loss = 0
         Accuracies = []
         imitate_net.train()
@@ -141,8 +140,6 @@ def train_inference(inference_net, iter):
 
         if test_loss >= prev_test_loss:
             num_worse += 1
-        # else:
-        #     num_worse = 0
         if num_worse >= patience:
             break
         prev_test_loss = test_loss
@@ -156,52 +153,6 @@ def train_inference(inference_net, iter):
 
         del test_losses, test_outputs
 
-"""
-Trains VAE to convergence on programs from inference network
-TODO: train to convergence and not number of epochs
-"""
-def train_generator(generator_net, iter):
-    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels_beam_width_10.pt", map_location=device)
-
-    # pad with a start and stop token
-    labels = np.pad(labels, ((0, 0), (1, 0)), constant_values=399)
-    labels = np.pad(labels, ((0, 0), (0, 1)), constant_values=399)
-
-    batch_size = 100
-
-    optimizer = optim.Adam(generator_net.parameters(), lr=1e-3)
-
-    generator_net.train()
-
-    for epoch in range(500):
-        train_loss = 0
-        np.random.shuffle(labels)
-        for i in range(0, len(labels), batch_size):
-            batch = torch.from_numpy(labels[i:i+batch_size]).long().to(device)
-            optimizer.zero_grad()
-            recon_batch, mu, logvar = generator_net(batch)
-            # remove start token for decoder labels
-            batch = batch[:, 1:]
-            loss = generator_net.loss_function(recon_batch, batch, mu, logvar)
-            loss.backward()
-            train_loss += loss.item()
-            optimizer.step()
-        print(f"generator epoch {epoch} loss: {train_loss / (len(labels) * (labels.shape[1]-1))} \
-                accuracy: {(recon_batch.permute(1, 2, 0).max(dim=1)[1] == batch).float().sum()/(batch.shape[0]*batch.shape[1])}")
-
-    sample = np.zeros((inference_train_size+inference_test_size, max_len))
-    for i in range(0, inference_train_size+inference_test_size, batch_size):
-        batch_sample = torch.randn(1, batch_size, generator_latent_dim).to(device)
-        batch_sample = generator_net.decode(batch_sample, timesteps=labels.shape[1] - 1).cpu()
-        # (batch_size, timesteps)
-        # sample = torch.argmax(sample.permute(1, 0, 2), dim=2)
-        batch_sample = batch_sample.permute(1, 0, 2).max(dim=2)[1]
-        # remove stop token
-        batch_sample = batch_sample[:, :-1]
-        sample[i:i+batch_size] = batch_sample
-
-    os.makedirs(os.path.dirname(f"wake_sleep_data/generator/{iter}/"), exist_ok=True)
-    torch.save(sample, f"wake_sleep_data/generator/{iter}/labels.pt")
 
 """
 Get initial pretrained CSGNet inference network
@@ -231,12 +182,21 @@ def get_csgnet():
     print("pre loading model")
     pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
     imitate_net_dict = imitate_net.state_dict()
-    pretrained_dict = {
+    imitate_pretrained_dict = {
         k: v
         for k, v in pretrained_dict.items() if k in imitate_net_dict
     }
-    imitate_net_dict.update(pretrained_dict)
+    imitate_net_dict.update(imitate_pretrained_dict)
     imitate_net.load_state_dict(imitate_net_dict)
+
+    # loading encoder params maybe not neccesary since possibly included with imitate_net?
+    encoder_net_dict = encoder_net.state_dict()
+    encoder_pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in encoder_net_dict
+    }
+    encoder_net_dict.update(encoder_pretrained_dict)
+    encoder_net.load_state_dict(encoder_net_dict)
 
     for param in imitate_net.parameters():
         param.requires_grad = True
@@ -246,59 +206,19 @@ def get_csgnet():
 
     return (encoder_net, imitate_net)
 
-def load_generate(iter):
-    generator = WakeSleepGen(f"wake_sleep_data/generator/{iter}/labels.pt")
-
-    train_gen = generator.get_train_data()
-
-    batch_data, batch_labels = next(train_gen)
-    f, a = plt.subplots(1, 10, figsize=(30, 3))
-    for j in range(10):
-        a[j].imshow(batch_data[-1, j, 0, :, :], cmap="Greys_r")
-        a[j].axis("off")
-    plt.savefig("10.png")
-    plt.close("all")
-
-def load_infer(iter):
-    encoder_net, imitate_net = get_csgnet()
-    print("pre loading model")
-    pretrained_dict = torch.load(f"trained_models/imitate-{iter}.pth")
-    imitate_net_dict = imitate_net.state_dict()
-    pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in imitate_net_dict
-    }
-    imitate_net_dict.update(pretrained_dict)
-    imitate_net.load_state_dict(imitate_net_dict)
-
-    pretrained_dict = torch.load(f"trained_models/encoder-{iter}.pth")
-    encoder_net_dict = encoder_net.state_dict()
-    pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in encoder_net_dict
-    }
-    encoder_net_dict.update(pretrained_dict)
-    encoder_net.load_state_dict(encoder_net_dict)
-
-    infer_programs((encoder_net, imitate_net), iter)
-
 """
 Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
     encoder_net, imitate_net = get_csgnet()
-    generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size).to(device)
 
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
         if not i == 0: # already inferred initial cad programs using pretrained model
             infer_programs((encoder_net, imitate_net), i)
-        train_generator(generator_net, i)
         train_inference((encoder_net, imitate_net), i)
 
         torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
         torch.save(encoder_net.state_dict(), f"trained_models/encoder-{i}.pth")
-        torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
 wake_sleep(50)
-# load_generate(16)
