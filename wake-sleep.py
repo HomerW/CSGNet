@@ -64,11 +64,14 @@ def train_inference(inference_net, iter):
         lr_dacay_fact=0.2,
         patience=config.patience)
 
-    prev_test_loss = 1e20
+    best_test_loss = 1e20
+    best_imitate_dict = imitate_net.state_dict()
+    best_encoder_dict = encoder_net.state_dict()
+
     prev_test_cd = 1e20
     prev_test_iou = 0
 
-    patience = 3
+    patience = 5
     num_worse = 0
 
     for epoch in range(30):
@@ -139,13 +142,18 @@ def train_inference(inference_net, iter):
         test_loss = test_losses.cpu().numpy() / (inference_test_size //
                                                  (config.batch_size))
 
-        if test_loss >= prev_test_loss:
+        if test_loss >= best_test_loss:
             num_worse += 1
-        # else:
-        #     num_worse = 0
+        else:
+            num_worse = 0
+            best_test_loss = test_loss
+            best_imitate_dict = imitate_net.state_dict()
+            best_encoder_dict = encoder_net.state_dict()
         if num_worse >= patience:
+            # load the best model and stop training
+            imitate_net.load_state_dict(best_imitate_dict)
+            encoder_net.load_state_dict(best_encoder_dict)
             break
-        prev_test_loss = test_loss
 
         reduce_plat.reduce_on_plateu(metrics["cd"])
         print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
