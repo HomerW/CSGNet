@@ -199,15 +199,6 @@ def get_csgnet():
     imitate_net_dict.update(imitate_pretrained_dict)
     imitate_net.load_state_dict(imitate_net_dict)
 
-    # loading encoder params maybe not neccesary since possibly included with imitate_net?
-    encoder_net_dict = encoder_net.state_dict()
-    encoder_pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in encoder_net_dict
-    }
-    encoder_net_dict.update(encoder_pretrained_dict)
-    encoder_net.load_state_dict(encoder_net_dict)
-
     for param in imitate_net.parameters():
         param.requires_grad = True
 
@@ -229,6 +220,5 @@ def wake_sleep(iterations):
         train_inference((encoder_net, imitate_net), i)
 
         torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
-        torch.save(encoder_net.state_dict(), f"trained_models/encoder-{i}.pth")
 
 wake_sleep(50)

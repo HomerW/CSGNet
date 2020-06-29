@@ -20,7 +20,7 @@ from src.utils.train_utils import prepare_input_op, beams_parser, validity, imag
 from torch.autograd import Variable
 from src.utils.train_utils import chamfer
 
-REFINE = True
+REFINE = False
 SAVE_VIZ = False
 
 
@@ -50,11 +50,12 @@ imitate_net.cuda()
 imitate_net.epsilon = config.eps
 
 max_len = 13
-beam_width = 5
+beam_width = 10
 config.test_size = 3000
 imitate_net.eval()
 imitate_net.epsilon = 0
-paths = [config.pretrain_modelpath]
+# paths = [config.pretrain_modelpath]
+paths = ["trained_models/imitate-22.pth"]
 parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
 for p in paths:

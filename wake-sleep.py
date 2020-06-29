@@ -279,15 +279,6 @@ def load_infer(iter):
     imitate_net_dict.update(pretrained_dict)
     imitate_net.load_state_dict(imitate_net_dict)
 
-    pretrained_dict = torch.load(f"trained_models/encoder-{iter}.pth")
-    encoder_net_dict = encoder_net.state_dict()
-    pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in encoder_net_dict
-    }
-    encoder_net_dict.update(pretrained_dict)
-    encoder_net.load_state_dict(encoder_net_dict)
-
     infer_programs((encoder_net, imitate_net), iter)
 
 """
@@ -305,7 +296,6 @@ def wake_sleep(iterations):
         train_inference((encoder_net, imitate_net), i)
 
         torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
-        torch.save(encoder_net.state_dict(), f"trained_models/encoder-{i}.pth")
         torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
 wake_sleep(50)
