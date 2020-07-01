@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 import numpy as np
 
-device = torch.device("cpu")
+device = torch.device("cuda")
 
 class MLP(nn.Module):
     def __init__(self, ind, hdim1, hdim2, odim):
@@ -30,7 +30,6 @@ class VAE(nn.Module):
         # encoding
         self.embed = nn.Embedding(vocab_size, hidden_dim)
         self.parent = MLP(3*hidden_dim, hidden_dim, hidden_dim, hidden_dim)
-        self.leaf = MLP(hidden_dim, hidden_dim, hidden_dim, hidden_dim)
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
 
@@ -43,7 +42,7 @@ class VAE(nn.Module):
         def traverse(node):
             # leaf
             if node["right"] is None and node["left"] is None:
-                return self.leaf(self.embed(node["value"]))
+                return self.embed(node["value"])
             # internal
             else:
                 lchild = traverse(node["left"])
@@ -75,21 +74,23 @@ class VAE(nn.Module):
                 return {"value": par_out[2*self.latent_dim:], "left": lchild, "right": rchild}, [self.nodetype(code)] + ltype + rtype
 
         # returns decoded tree given just a latent code at test time
-        def traverse_test(code):
+        def traverse_test(code, max_depth):
             # leaf
-            if self.nodetype(code) < 0:
+            if self.nodetype(code) < 0 or max_depth == 1:
                 return {"value": self.decode_leaf(code), "left": None, "right": None}
             # internal
             else:
                 par_out = self.decode_parent(code)
-                lchild = traverse_test(par_out[:self.latent_dim])
-                rchild = traverse_test(par_out[self.latent_dim:2*self.latent_dim])
+                lchild = traverse_test(par_out[:self.latent_dim], max_depth - 1)
+                rchild = traverse_test(par_out[self.latent_dim:2*self.latent_dim], max_depth - 1)
                 return {"value": par_out[2*self.latent_dim:], "left": lchild, "right": rchild}
 
         if tree is not None:
             return traverse_train(tree, z)
         else:
-            return traverse_test(z)
+            # depth of 4 is enough to generate max_len=13 programs
+            # todo: don't hardcode this
+            return traverse_test(z, 4)
 
     def forward(self, x):
         mu, logvar = self.encode(x)
@@ -113,7 +114,7 @@ class VAE(nn.Module):
 
         CE = F.cross_entropy(torch.stack(flat_recon_x), torch.stack(flat_x), reduction='sum')
         # loss from predicting node type
-        type_loss = F.binary_cross_entropy_with_logits(torch.stack(type_list), torch.stack(target_type_list).float(), reduction='sum')
+        type_loss = F.binary_cross_entropy_with_logits(torch.stack(type_list), torch.stack(target_type_list).float().to(device), reduction='sum')
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014

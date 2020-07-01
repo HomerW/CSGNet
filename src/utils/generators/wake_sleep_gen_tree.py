@@ -8,7 +8,7 @@ import numpy as np
 from src.Models.models import ParseModelOutput
 from src.utils.train_utils import validity
 
-device = torch.device("cpu")
+device = torch.device("cuda")
 
 class WakeSleepGen:
 

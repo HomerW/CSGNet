@@ -172,7 +172,7 @@ def get_csgnet():
 
     # Encoder
     encoder_net = Encoder(config.encoder_drop)
-    encoder_net.to(device)
+    encoder_net = encoder_net.to(device)
 
     # Load the terminals symbols of the grammar
     with open("terminals.txt", "r") as file:
@@ -187,7 +187,7 @@ def get_csgnet():
         mode=config.mode,
         num_draws=len(unique_draw),
         canvas_shape=config.canvas_shape)
-    imitate_net.to(device)
+    imitate_net = imitate_net.to(device)
 
     print("pre loading model")
     pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
@@ -212,6 +212,16 @@ Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
     encoder_net, imitate_net = get_csgnet()
+
+    # print("pre loading model")
+    # pretrained_dict = torch.load("trained_models/imitate-17.pth", map_location=device)
+    # imitate_net_dict = imitate_net.state_dict()
+    # imitate_pretrained_dict = {
+    #     k: v
+    #     for k, v in pretrained_dict.items() if k in imitate_net_dict
+    # }
+    # imitate_net_dict.update(imitate_pretrained_dict)
+    # imitate_net.load_state_dict(imitate_net_dict)
 
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")

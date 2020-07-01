@@ -25,7 +25,6 @@ limitations under the License.
 """
 import os
 import pathlib
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 import numpy as np
 import torch
@@ -41,24 +40,12 @@ except ImportError:
     def tqdm(x): return x
 
 from src.Models.models import Encoder
-from src.utils.generators.wake_sleep_gen_tree import WakeSleepGen
+from src.utils.generators.wake_sleep_gen import WakeSleepGen
+from src.utils.generators.shapenet_generater import Generator
 
-parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-parser.add_argument('path', type=str, nargs=2,
-                    help=('Path to the generated images or '
-                          'to .npz statistic files'))
-parser.add_argument('--batch-size', type=int, default=50,
-                    help='Batch size to use')
-parser.add_argument('--dims', type=int, default=2048,
-                    choices=list(InceptionV3.BLOCK_INDEX_BY_DIM),
-                    help=('Dimensionality of Inception features to use. '
-                          'By default, uses pool3 features'))
-parser.add_argument('-c', '--gpu', default='', type=str,
-                    help='GPU to use (leave blank for CPU only)')
+device = torch.device("cuda")
 
-
-def get_activations(images_path, model, batch_size=50, dims=2048,
-                    cuda=False, verbose=False):
+def get_activations(generator, model, batch_size=50, dims=32, verbose=False):
     """Calculates the activations of the pool_3 layer for all images.
     Params:
     -- files       : List of image files paths
@@ -81,30 +68,24 @@ def get_activations(images_path, model, batch_size=50, dims=2048,
 
     test_size = 3000
 
-    generator = WakeSleepGen(f"{images_path}/labels.pt",
-                             f"{images_path}/val/labels.pt",
-                             batch_size=batch_size,
-                             test_size=test_size)
-
-    test_gen = generator.get_test_data()
-
     pred_arr = np.empty((test_size, dims))
 
     n_batches = test_size // batch_size
 
     for i in tqdm(range(0, test_size, batch_size)):
         if verbose:
-            print('\rPropagating batch %d/%d' % (i + 1, n_batches),
+            print('\rPropagating batch %d/%d' % ((i + 1) // batch_size, n_batches),
                   end='', flush=True)
         start = i
         end = i + batch_size
 
-        images = next(test_gen)[0]
+        images = next(generator)
+        if len(images) == 2: # generated samples
+            images = images[0].to(device)
+        else: # cad data
+            images = torch.from_numpy(images).to(device)
 
-        if cuda:
-            images = images.cuda()
-
-        pred = model(images[-1, :, 0:1, :, :])
+        pred = model.encode(images[-1, :, 0:1, :, :])
 
         # If model output is not scalar, apply global spatial average pooling.
         # This happens if you choose a dimensionality not equal 2048.
@@ -174,7 +155,7 @@ def calculate_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
 
 
 def calculate_activation_statistics(files, model, batch_size=50,
-                                    dims=2048, cuda=False, verbose=False):
+                                    dims=32, verbose=False):
     """Calculation of the statistics used by the FID.
     Params:
     -- files       : List of image files paths
@@ -192,50 +173,65 @@ def calculate_activation_statistics(files, model, batch_size=50,
     -- sigma : The covariance matrix of the activations of the pool_3 layer of
                the inception model.
     """
-    act = get_activations(files, model, batch_size, dims, cuda, verbose)
+    act = get_activations(files, model, batch_size, dims, verbose)
     mu = np.mean(act, axis=0)
     sigma = np.cov(act, rowvar=False)
     return mu, sigma
 
 
-def _compute_statistics_of_path(path, model, batch_size, dims, cuda):
+def _compute_statistics_of_path(path, model, batch_size, dims):
     if path.endswith('.npz'):
         f = np.load(path)
         m, s = f['mu'][:], f['sigma'][:]
         f.close()
     else:
         m, s = calculate_activation_statistics(path, model, batch_size,
-                                               dims, cuda)
+                                               dims)
 
     return m, s
 
 
-def calculate_fid_given_paths(paths, batch_size, cuda, dims):
+def calculate_fid_given_paths(images_path, model_path, batch_size, dims):
     """Calculates the FID of two paths"""
-    for p in paths:
-        if not os.path.exists(p):
-            raise RuntimeError('Invalid path: %s' % p)
+    if not os.path.exists(images_path):
+        raise RuntimeError('Invalid path: %s' % path)
+    if not os.path.exists(model_path):
+        raise RuntimeError('Invalid path: %s' % path)
 
-    model = Encoder(0.2)
+    model = Encoder()
 
-    if cuda:
-        model.cuda()
+    # preload
+    pretrained_dict = torch.load(model_path, map_location=device)
+    model_dict = model.state_dict()
+    model_pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in model_dict
+    }
+    model_dict.update(model_pretrained_dict)
+    model.load_state_dict(model_dict)
 
-    m1, s1 = _compute_statistics_of_path(paths[0], model, batch_size,
-                                         dims, cuda)
-    m2, s2 = _compute_statistics_of_path(paths[1], model, batch_size,
-                                         dims, cuda)
+    model = model.to(device)
+
+    generator = WakeSleepGen(f"{images_path}/labels.pt",
+                             f"{images_path}/val/labels.pt",
+                             batch_size=batch_size,
+                             test_size=3000).get_test_data()
+    cad_generator = Generator().val_gen(batch_size=batch_size,
+                                        path="data/cad/cad.h5",
+                                        if_augment=False)
+
+    m1, s1 = calculate_activation_statistics(generator, model, batch_size,
+                                         dims)
+    m2, s2 = calculate_activation_statistics(cad_generator, model, batch_size,
+                                         dims)
     fid_value = calculate_frechet_distance(m1, s1, m2, s2)
 
     return fid_value
 
 
 if __name__ == '__main__':
-    args = parser.parse_args()
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
-
-    fid_value = calculate_fid_given_paths(args.path,
-                                          args.batch_size,
-                                          args.gpu != '',
-                                          args.dims)
+    fid_value = calculate_fid_given_paths("wake_sleep_data/inference/0/labels",
+                                          "trained_models/imitate-17.pth",
+                                          100,
+                                          32)
     print('FID: ', fid_value)
