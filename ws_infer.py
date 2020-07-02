@@ -218,86 +218,86 @@ def infer_programs(inference_net, iter):
 
     torch.save(pred_labels, labels_path + "labels.pt")
 
-    pred_expressions = []
-    pred_labels = np.zeros((config.test_size, max_len))
-    Rs = 0
-    CDs = 0
-    Target_images = []
-    for batch_idx in range(config.test_size // config.batch_size):
-        with torch.no_grad():
-            print(f"Inferring val cad batch: {batch_idx}")
-            data_ = next(val_gen)
-            labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
-            one_hot_labels = prepare_input_op(labels, len(unique_draw))
-            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
-            data = Variable(torch.from_numpy(data_)).to(device)
-
-        all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
-            [data, one_hot_labels], beam_width, max_len)
-
-        beam_labels = beams_parser(
-            all_beams, data_.shape[1], beam_width=beam_width)
-
-        beam_labels_numpy = np.zeros(
-            (config.batch_size * beam_width, max_len), dtype=np.int32)
-        Target_images.append(data_[-1, :, 0, :, :])
-        for i in range(data_.shape[1]):
-            beam_labels_numpy[i * beam_width:(
-                i + 1) * beam_width, :] = beam_labels[i]
-
-        # find expression from these predicted beam labels
-        expressions = [""] * config.batch_size * beam_width
-        for i in range(config.batch_size * beam_width):
-            for j in range(max_len):
-                expressions[i] += unique_draw[beam_labels_numpy[i, j]]
-        for index, prog in enumerate(expressions):
-            expressions[index] = prog.split("$")[0]
-
-        pred_expressions += expressions
-        predicted_images = image_from_expressions(parser, expressions)
-        target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-        target_images_new = np.repeat(
-            target_images, axis=0, repeats=beam_width)
-
-        beam_CD = chamfer(target_images_new, predicted_images)
-
-        CD = np.zeros((config.batch_size, 1))
-        for r in range(config.batch_size):
-            CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
-
-        CDs += np.mean(CD)
-
-        # select best expression by chamfer distance
-        best_labels = np.zeros((config.batch_size, max_len))
-        for r in range(config.batch_size):
-            best_labels[r] = beam_labels[r][np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])]
-        pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
-
-    print(
-        "Inferring validation cad average chamfer distance: {}".format(
-            CDs / (config.test_size // config.batch_size)),
-        flush=True)
-
-    if refine:
-        Target_images = np.concatenate(Target_images, 0)
-        tweaked_expressions = []
-        scores = 0
-        for index, value in enumerate(pred_expressions):
-            prog = parser.Parser.parse(value)
-            if validity(prog, len(prog), len(prog) - 1):
-                optim_expression, score = optimize_expression(
-                    value,
-                    Target_images[index // beam_width],
-                    metric="chamfer",
-                    max_iter=None)
-                print(value)
-                tweaked_expressions.append(optim_expression)
-                scores += score
-            else:
-                # If the predicted program is invalid
-                tweaked_expressions.append(value)
-                scores += 16
-
-        print("chamfer scores", scores / len(tweaked_expressions))
-
-    torch.save(pred_labels, labels_path + "val/labels.pt")
+    # pred_expressions = []
+    # pred_labels = np.zeros((config.test_size, max_len))
+    # Rs = 0
+    # CDs = 0
+    # Target_images = []
+    # for batch_idx in range(config.test_size // config.batch_size):
+    #     with torch.no_grad():
+    #         print(f"Inferring val cad batch: {batch_idx}")
+    #         data_ = next(val_gen)
+    #         labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
+    #         one_hot_labels = prepare_input_op(labels, len(unique_draw))
+    #         one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
+    #         data = Variable(torch.from_numpy(data_)).to(device)
+    #
+    #     all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
+    #         [data, one_hot_labels], beam_width, max_len)
+    #
+    #     beam_labels = beams_parser(
+    #         all_beams, data_.shape[1], beam_width=beam_width)
+    #
+    #     beam_labels_numpy = np.zeros(
+    #         (config.batch_size * beam_width, max_len), dtype=np.int32)
+    #     Target_images.append(data_[-1, :, 0, :, :])
+    #     for i in range(data_.shape[1]):
+    #         beam_labels_numpy[i * beam_width:(
+    #             i + 1) * beam_width, :] = beam_labels[i]
+    #
+    #     # find expression from these predicted beam labels
+    #     expressions = [""] * config.batch_size * beam_width
+    #     for i in range(config.batch_size * beam_width):
+    #         for j in range(max_len):
+    #             expressions[i] += unique_draw[beam_labels_numpy[i, j]]
+    #     for index, prog in enumerate(expressions):
+    #         expressions[index] = prog.split("$")[0]
+    #
+    #     pred_expressions += expressions
+    #     predicted_images = image_from_expressions(parser, expressions)
+    #     target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+    #     target_images_new = np.repeat(
+    #         target_images, axis=0, repeats=beam_width)
+    #
+    #     beam_CD = chamfer(target_images_new, predicted_images)
+    #
+    #     CD = np.zeros((config.batch_size, 1))
+    #     for r in range(config.batch_size):
+    #         CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
+    #
+    #     CDs += np.mean(CD)
+    #
+    #     # select best expression by chamfer distance
+    #     best_labels = np.zeros((config.batch_size, max_len))
+    #     for r in range(config.batch_size):
+    #         best_labels[r] = beam_labels[r][np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])]
+    #     pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+    #
+    # print(
+    #     "Inferring validation cad average chamfer distance: {}".format(
+    #         CDs / (config.test_size // config.batch_size)),
+    #     flush=True)
+    #
+    # if refine:
+    #     Target_images = np.concatenate(Target_images, 0)
+    #     tweaked_expressions = []
+    #     scores = 0
+    #     for index, value in enumerate(pred_expressions):
+    #         prog = parser.Parser.parse(value)
+    #         if validity(prog, len(prog), len(prog) - 1):
+    #             optim_expression, score = optimize_expression(
+    #                 value,
+    #                 Target_images[index // beam_width],
+    #                 metric="chamfer",
+    #                 max_iter=None)
+    #             print(value)
+    #             tweaked_expressions.append(optim_expression)
+    #             scores += score
+    #         else:
+    #             # If the predicted program is invalid
+    #             tweaked_expressions.append(value)
+    #             scores += 16
+    #
+    #     print("chamfer scores", scores / len(tweaked_expressions))
+    #
+    # torch.save(pred_labels, labels_path + "val/labels.pt")

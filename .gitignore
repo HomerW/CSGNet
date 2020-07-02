@@ -2,6 +2,7 @@ __pycache__
 data
 csgnet_venv
 trained_models
+trained_models_tree
 wake_sleep_data
 *.out
 wake_sleep_data_bkp

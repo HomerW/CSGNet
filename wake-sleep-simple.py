@@ -65,7 +65,6 @@ def train_inference(inference_net, iter):
 
     best_test_loss = 1e20
     best_imitate_dict = imitate_net.state_dict()
-    best_encoder_dict = encoder_net.state_dict()
 
     prev_test_cd = 1e20
     prev_test_iou = 0
@@ -147,11 +146,9 @@ def train_inference(inference_net, iter):
             num_worse = 0
             best_test_loss = test_loss
             best_imitate_dict = imitate_net.state_dict()
-            best_encoder_dict = encoder_net.state_dict()
         if num_worse >= patience:
             # load the best model and stop training
             imitate_net.load_state_dict(best_imitate_dict)
-            encoder_net.load_state_dict(best_encoder_dict)
             break
 
         reduce_plat.reduce_on_plateu(metrics["cd"])

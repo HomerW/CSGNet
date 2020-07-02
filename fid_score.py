@@ -82,6 +82,7 @@ def get_activations(generator, model, batch_size=50, dims=32, verbose=False):
         images = next(generator)
         if len(images) == 2: # generated samples
             images = images[0].to(device)
+            # images = torch.from_numpy(np.random.randint(0, 2, (1, 100, 1, 64, 64))).to(device).float()
         else: # cad data
             images = torch.from_numpy(images).to(device)
 
@@ -191,7 +192,7 @@ def _compute_statistics_of_path(path, model, batch_size, dims):
     return m, s
 
 
-def calculate_fid_given_paths(images_path, model_path, batch_size, dims):
+def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
     """Calculates the FID of two paths"""
     if not os.path.exists(images_path):
         raise RuntimeError('Invalid path: %s' % path)
@@ -224,14 +225,14 @@ def calculate_fid_given_paths(images_path, model_path, batch_size, dims):
                                          dims)
     m2, s2 = calculate_activation_statistics(cad_generator, model, batch_size,
                                          dims)
+
     fid_value = calculate_frechet_distance(m1, s1, m2, s2)
 
     return fid_value
 
 
 if __name__ == '__main__':
-    fid_value = calculate_fid_given_paths("wake_sleep_data/inference/0/labels",
-                                          "trained_models/imitate-17.pth",
-                                          100,
-                                          32)
+    fid_value = calculate_fid_given_paths("wake_sleep_data/inference/1/labels",
+                                          "trained_models/best-model.pth",
+                                          100)
     print('FID: ', fid_value)

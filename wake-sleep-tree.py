@@ -11,7 +11,7 @@ from src.Models.models import Encoder
 from src.Models.models import ImitateJoint, ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
-from src.utils.generators.wake_sleep_gen_tree import WakeSleepGen
+from src.utils.generators.wake_sleep_gen import WakeSleepGen
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, beams_parser, validity, image_from_expressions, stack_from_expressions
 import matplotlib
@@ -21,7 +21,7 @@ import os
 import json
 import sys
 from src.utils.generators.shapenet_generater import Generator
-from vae_tree import VAE
+from vae_tree_reduced import VAE
 from tree_conversion import label_to_tree, tree_to_label
 from ws_infer import infer_programs
 from fid_score import calculate_fid_given_paths
@@ -74,7 +74,7 @@ def train_inference(inference_net, iter):
     patience = 5
     num_worse = 0
 
-    for epoch in range(30):
+    for epoch in range(50):
         train_loss = 0
         Accuracies = []
         imitate_net.train()
@@ -170,26 +170,30 @@ def train_generator(generator_net, iter):
     labels = torch.load(f"wake_sleep_data_tree/inference/{iter}/labels/labels.pt", map_location=device)
     trees = list(map(label_to_tree, labels))
 
-    optimizer = optim.Adam(generator_net.parameters(), lr=1e-3)
+    optimizer = optim.Adam(generator_net.parameters(), lr=1e-4)
 
     generator_net.train()
 
-    for epoch in range(100):
+    for epoch in range(5):
         train_loss = 0
+        batch_loss = 0
         np.random.shuffle(trees)
         for i, t in enumerate(trees):
             optimizer.zero_grad()
             decoder_out, mu, logvar = generator_net(t)
             loss = generator_net.loss_function(decoder_out, t, mu, logvar)
             loss.backward()
-            train_loss += float(loss)
+            batch_loss += float(loss)
             optimizer.step()
-            if (i + 1) % 500 == 0:
-                print(f"{i+1}/{len(trees)}")
+            if (i + 1) % 100 == 0:
+                # print(f"{i+1}/{len(trees)}")
+                # print(batch_loss / 100)
+                train_loss += batch_loss / 100
+                batch_loss = 0
 
             del decoder_out, mu, logvar
 
-        print(f"generator epoch {epoch} loss: {train_loss / len(labels)}")
+        print(f"generator epoch {epoch} loss: {train_loss / (len(labels) / 100)}")
 
     train_sample = np.zeros((inference_train_size, max_len))
     for i in range(inference_train_size):
@@ -213,8 +217,7 @@ def train_generator(generator_net, iter):
 
     fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/{iter}",
                                           "trained_models/best-model.pth",
-                                          100,
-                                          32)
+                                          100)
     print('FID: ', fid_value)
 
 """
@@ -267,24 +270,24 @@ def wake_sleep(iterations):
     encoder_net, imitate_net = get_csgnet()
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size, max_len).to(device)
 
-    print("pre loading model")
-    pretrained_dict = torch.load("trained_models/best-model.pth", map_location=device)
-    imitate_net_dict = imitate_net.state_dict()
-    imitate_pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in imitate_net_dict
-    }
-    imitate_net_dict.update(imitate_pretrained_dict)
-    imitate_net.load_state_dict(imitate_net_dict)
+    # print("pre loading model")
+    # pretrained_dict = torch.load("trained_models/best-model.pth", map_location=device)
+    # imitate_net_dict = imitate_net.state_dict()
+    # imitate_pretrained_dict = {
+    #     k: v
+    #     for k, v in pretrained_dict.items() if k in imitate_net_dict
+    # }
+    # imitate_net_dict.update(imitate_pretrained_dict)
+    # imitate_net.load_state_dict(imitate_net_dict)
 
-    for i in range(1, iterations):
+    for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
-        # if not i == 0: # already inferred initial cad programs using pretrained model
-        #     infer_programs((encoder_net, imitate_net), i)
+        if not i == 0: # already inferred initial cad programs using pretrained model
+            infer_programs((encoder_net, imitate_net), i)
         train_generator(generator_net, i)
-        # train_inference((encoder_net, imitate_net), i)
+        train_inference((encoder_net, imitate_net), i)
 
-        # torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
-        # torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
+        torch.save(imitate_net.state_dict(), f"trained_models_tree/imitate-{i}.pth")
+        torch.save(generator_net.state_dict(), f"trained_models_tree/generator-{i}.pth")
 
 wake_sleep(50)
