@@ -167,7 +167,8 @@ Trains VAE to convergence on programs from inference network
 TODO: train to convergence and not number of epochs
 """
 def train_generator(generator_net, iter):
-    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
+    # labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
+    labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
 
     # pad with a start and stop token
     labels = np.pad(labels, ((0, 0), (1, 0)), constant_values=399)
@@ -179,7 +180,7 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for epoch in range(500):
+    for epoch in range(1000):
         train_loss = 0
         np.random.shuffle(labels)
         for i in range(0, len(labels), batch_size):
@@ -203,7 +204,7 @@ def train_generator(generator_net, iter):
             torch.save(sample, f"wake_sleep_data/generator/tmp/labels.pt")
             torch.save(sample, f"wake_sleep_data/generator/tmp/val/labels.pt")
             fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/tmp",
-                                                  "trained_models/best-model.pth",
+                                                  "trained_models/best-model-full.pth",
                                                   100,
                                                   32)
             print('FID: ', fid_value)
@@ -236,7 +237,7 @@ def train_generator(generator_net, iter):
 
     if not iter == 0:
         fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/{iter}",
-                                              f"trained_models/best-model.pth",
+                                              f"trained_models/best-model-full.pth",
                                               100)
         print('FID: ', fid_value)
 

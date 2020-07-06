@@ -167,7 +167,8 @@ Trains VAE to convergence on programs from inference network
 TODO: train to convergence and not number of epochs
 """
 def train_generator(generator_net, iter):
-    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
+    # labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
+    labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
     trees = list(map(label_to_tree, labels))
 
     optimizer = optim.Adam(generator_net.parameters(), lr=1e-4)
@@ -206,7 +207,7 @@ def train_generator(generator_net, iter):
         torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/labels.pt")
         torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/val/labels.pt")
         fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/tmp",
-                                              "trained_models/best-model.pth",
+                                              "trained_models/best-model-full.pth",
                                               100,
                                               32)
         print('FID: ', fid_value)
@@ -234,7 +235,7 @@ def train_generator(generator_net, iter):
 
     if not iter == 0:
         fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/{iter}",
-                                              f"trained_models/best-model.pth",
+                                              f"trained_models/best-model-full.pth",
                                               100)
         print('FID: ', fid_value)
 
@@ -289,7 +290,7 @@ def wake_sleep(iterations):
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size, max_len).to(device)
 
     # print("pre loading model")
-    # pretrained_dict = torch.load("trained_models/best-model.pth", map_location=device)
+    # pretrained_dict = torch.load("trained_models/best-model-full.pth", map_location=device)
     # imitate_net_dict = imitate_net.state_dict()
     # imitate_pretrained_dict = {
     #     k: v
