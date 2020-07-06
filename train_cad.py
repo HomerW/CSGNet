@@ -2,13 +2,13 @@
 Training script specially designed for REINFORCE training.
 """
 
-import logging
+# import logging
 import numpy as np
 import torch
 import torch.optim as optim
 import sys
-import read_config
-from tensorboard_logger import configure, log_value
+from src.utils import read_config
+# from tensorboard_logger import configure, log_value
 from torch.autograd.variable import Variable
 from src.Models.models import ImitateJoint
 from src.Models.models import Encoder
@@ -32,18 +32,18 @@ config.train_size = 10000
 config.test_size = 3000
 print(config.config)
 
-# Setup Tensorboard logger
-configure("log/tensorboard/{}".format(model_name), flush_secs=5)
+# # Setup Tensorboard logger
+# configure("log/tensorboard/{}".format(model_name), flush_secs=5)
 
-# Setup logger
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s:%(name)s:%(message)s')
-file_handler = logging.FileHandler(
-    'log/logger/{}.log'.format(model_name), mode='w')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-logger.info(config.config)
+# # Setup logger
+# logger = logging.getLogger(__name__)
+# logger.setLevel(logging.INFO)
+# formatter = logging.Formatter('%(asctime)s:%(name)s:%(message)s')
+# file_handler = logging.FileHandler(
+#     'log/logger/{}.log'.format(model_name), mode='w')
+# file_handler.setFormatter(formatter)
+# logger.addHandler(file_handler)
+# logger.info(config.config)
 
 # CNN encoder
 encoder_net = Encoder(config.encoder_drop)
@@ -102,8 +102,7 @@ reduce_plat = LearningRate(
     optimizer,
     init_lr=config.lr,
     lr_dacay_fact=0.2,
-    patience=config.patience,
-    logger=logger)
+    patience=config.patience)
 
 train_gen = generator.train_gen(
     batch_size=config.batch_size, path=DATA_PATH, if_augment=True, shuffle=True)
@@ -154,26 +153,27 @@ for epoch in range(config.epochs):
         Rs = Rs / (num_traj)
 
         # Clip gradient to avoid explosions
-        logger.info(torch.nn.utils.clip_grad_norm(imitate_net.parameters(), 10))
+        # logger.info(torch.nn.utils.clip_grad_norm(imitate_net.parameters(), 10))
+        torch.nn.utils.clip_grad_norm(imitate_net.parameters(), 10)
         # take gradient step only after having accumulating all gradients.
         optimizer.step()
         l = loss_sum
         train_loss += l
-        log_value('train_loss_batch',
-                  l.cpu().numpy(),
-                  epoch * (config.train_size //
-                           (config.batch_size)) + batch_idx)
+        # log_value('train_loss_batch',
+        #           l.cpu().numpy(),
+        #           epoch * (config.train_size //
+        #                    (config.batch_size)) + batch_idx)
         total_reward += np.mean(Rs)
 
-        log_value('train_reward_batch', np.mean(Rs),
-                  epoch * (config.train_size //
-                           (config.batch_size)) + batch_idx)
+        # log_value('train_reward_batch', np.mean(Rs),
+        #           epoch * (config.train_size //
+        #                    (config.batch_size)) + batch_idx)
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
-    log_value('train_loss', mean_train_loss.cpu().numpy(), epoch)
-    log_value('train_reward',
-              total_reward / (config.train_size //
-                              (config.batch_size)), epoch)
+    # log_value('train_loss', mean_train_loss.cpu().numpy(), epoch)
+    # log_value('train_reward',
+    #           total_reward / (config.train_size //
+    #                           (config.batch_size)), epoch)
 
     test_losses = 0
     total_reward = 0
@@ -210,13 +210,13 @@ for epoch in range(config.epochs):
     total_reward = total_reward / (config.test_size // config.batch_size)
 
     test_loss = test_losses.cpu().numpy() / (config.test_size // config.batch_size)
-    log_value('test_loss', test_loss, epoch)
-    log_value('test_reward', total_reward, epoch)
+    # log_value('test_loss', test_loss, epoch)
+    # log_value('test_reward', total_reward, epoch)
     if config.lr_sch:
         # Negative of the rewards should be minimized
         reduce_plat.reduce_on_plateu(-total_reward)
 
-    logger.info("Epoch {}/{}=>  train_loss: {}, test_loss: {}, train_mse: {},"
+    print("Epoch {}/{}=>  train_loss: {}, test_loss: {}, train_mse: {},"
                 "test_mse: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(), test_loss,
                                       1, 1))
@@ -224,7 +224,7 @@ for epoch in range(config.epochs):
 
     # Save when test reward is increased
     if total_reward > prev_test_reward:
-        logger.info("Saving the Model weights")
+        # logger.info("Saving the Model weights")
         torch.save(imitate_net.state_dict(),
                    "trained_models/{}.pth".format(model_name))
         prev_test_reward = total_reward
