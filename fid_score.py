@@ -195,9 +195,9 @@ def _compute_statistics_of_path(path, model, batch_size, dims):
 def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
     """Calculates the FID of two paths"""
     if not os.path.exists(images_path):
-        raise RuntimeError('Invalid path: %s' % path)
+        raise RuntimeError('Invalid path: %s' % images_path)
     if not os.path.exists(model_path):
-        raise RuntimeError('Invalid path: %s' % path)
+        raise RuntimeError('Invalid path: %s' % model_path)
 
     model = Encoder()
 

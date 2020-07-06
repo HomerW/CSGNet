@@ -167,14 +167,14 @@ Trains VAE to convergence on programs from inference network
 TODO: train to convergence and not number of epochs
 """
 def train_generator(generator_net, iter):
-    labels = torch.load(f"wake_sleep_data_tree/inference/{iter}/labels/labels.pt", map_location=device)
+    labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
     trees = list(map(label_to_tree, labels))
 
     optimizer = optim.Adam(generator_net.parameters(), lr=1e-4)
 
     generator_net.train()
 
-    for epoch in range(5):
+    for epoch in range(50):
         train_loss = 0
         batch_loss = 0
         np.random.shuffle(trees)
@@ -194,6 +194,23 @@ def train_generator(generator_net, iter):
             del decoder_out, mu, logvar
 
         print(f"generator epoch {epoch} loss: {train_loss / (len(labels) / 100)}")
+        test_sample = np.zeros((inference_test_size, max_len))
+        for i in range(inference_test_size):
+            latent = torch.randn(generator_latent_dim).to(device)
+            sampled_tree = generator_net.decode(latent)
+            sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
+            sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
+            test_sample[i] = sampled_label.cpu().numpy()
+        os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/"), exist_ok=True)
+        os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/val/"), exist_ok=True)
+        torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/labels.pt")
+        torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/val/labels.pt")
+        fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/tmp",
+                                              "trained_models/best-model.pth",
+                                              100,
+                                              32)
+        print('FID: ', fid_value)
+
 
     train_sample = np.zeros((inference_train_size, max_len))
     for i in range(inference_train_size):
@@ -215,10 +232,11 @@ def train_generator(generator_net, iter):
     os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/{iter}/val/"), exist_ok=True)
     torch.save(test_sample, f"wake_sleep_data_tree/generator/{iter}/val/labels.pt")
 
-    fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/{iter}",
-                                          "trained_models/best-model.pth",
-                                          100)
-    print('FID: ', fid_value)
+    if not iter == 0:
+        fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/{iter}",
+                                              f"trained_models/best-model.pth",
+                                              100)
+        print('FID: ', fid_value)
 
 """
 Get initial pretrained CSGNet inference network

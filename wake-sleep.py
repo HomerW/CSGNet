@@ -195,18 +195,18 @@ def train_generator(generator_net, iter):
         print(f"generator epoch {epoch} loss: {train_loss / (len(labels) * (labels.shape[1]-1))} \
                 accuracy: {(recon_batch.permute(1, 2, 0).max(dim=1)[1] == batch).float().sum()/(batch.shape[0]*batch.shape[1])}")
 
-        # if epoch % 50 == 0:
-        #     latents = torch.randn(1, inference_test_size, generator_latent_dim).to(device)
-        #     sample = generator_net.decode(latents, timesteps=labels.shape[1] - 1).cpu().permute(1, 0, 2).max(dim=2)[1][:, :-1].numpy()
-        #     os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/"), exist_ok=True)
-        #     os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/val/"), exist_ok=True)
-        #     torch.save(sample, f"wake_sleep_data/generator/tmp/labels.pt")
-        #     torch.save(sample, f"wake_sleep_data/generator/tmp/val/labels.pt")
-        #     fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/tmp",
-        #                                           "trained_models/best-model.pth",
-        #                                           100,
-        #                                           32)
-        #     print('FID: ', fid_value)
+        if (epoch + 1) % 50 == 0:
+            latents = torch.randn(1, inference_test_size, generator_latent_dim).to(device)
+            sample = generator_net.decode(latents, timesteps=labels.shape[1] - 1).cpu().permute(1, 0, 2).max(dim=2)[1][:, :-1].numpy()
+            os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/"), exist_ok=True)
+            os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/val/"), exist_ok=True)
+            torch.save(sample, f"wake_sleep_data/generator/tmp/labels.pt")
+            torch.save(sample, f"wake_sleep_data/generator/tmp/val/labels.pt")
+            fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/tmp",
+                                                  "trained_models/best-model.pth",
+                                                  100,
+                                                  32)
+            print('FID: ', fid_value)
 
     train_sample = np.zeros((inference_train_size, max_len))
     for i in range(0, inference_train_size, batch_size):
@@ -236,7 +236,7 @@ def train_generator(generator_net, iter):
 
     if not iter == 0:
         fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/{iter}",
-                                              f"trained_models/imitate-{iter}.pth",
+                                              f"trained_models/best-model.pth",
                                               100)
         print('FID: ', fid_value)
 
@@ -246,7 +246,7 @@ Get initial pretrained CSGNet inference network
 def get_csgnet():
     config = read_config.Config("config_synthetic.yml")
 
-    # Encoder
+# Encoder
     encoder_net = Encoder(config.encoder_drop)
     encoder_net = encoder_net.to(device)
 
@@ -318,7 +318,7 @@ def wake_sleep(iterations):
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size).to(device)
 
     # print("pre loading model")
-    # pretrained_dict = torch.load("trained_models/best-model.pth", map_location=device)
+    # pretrained_dict = torch.load("trained_models/imitate-3.pth", map_location=device)
     # imitate_net_dict = imitate_net.state_dict()
     # imitate_pretrained_dict = {
     #     k: v
@@ -326,6 +326,15 @@ def wake_sleep(iterations):
     # }
     # imitate_net_dict.update(imitate_pretrained_dict)
     # imitate_net.load_state_dict(imitate_net_dict)
+    #
+    # pretrained_dict = torch.load("trained_models/generator-3.pth", map_location=device)
+    # generator_net_dict = generator_net.state_dict()
+    # generator_pretrained_dict = {
+    #     k: v
+    #     for k, v in pretrained_dict.items() if k in generator_net_dict
+    # }
+    # generator_net_dict.update(generator_pretrained_dict)
+    # generator_net.load_state_dict(generator_net_dict)
 
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
