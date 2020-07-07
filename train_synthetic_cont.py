@@ -25,8 +25,9 @@ from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
+from itertools import product
 
-device = torch.device("cuda")
+device = torch.device("cpu")
 
 config = read_config.Config("config_synthetic.yml")
 
@@ -58,7 +59,7 @@ generator = MixedGenerateData(
 imitate_net = ImitateJoint(
     input_size=config.input_size,
     hidden_size=config.hidden_size,
-    output_size = 256,
+    output_size = 1,
     encoder=encoder_net)
 imitate_net.to(device)
 
@@ -97,6 +98,26 @@ for k in data_labels_paths.keys():
         num_test_images=dataset_sizes[k][1],
         jitter_program=True)
 
+def labels_to_cont(labels):
+    param_indices = list(product(range(3), range(1, 65), range(1, 65), range(1, 33)))
+    num_prim = len(param_indices)
+    type_dict = {"c": 0, "s": 1, "t": 2}
+    labels_cont = np.zeros(labels.shape)
+    labels_cont[labels == 396] = 0
+    labels_cont[labels == 397] = 1
+    labels_cont[labels == 398] = 2
+    labels_cont[labels == 399] = 3
+    for i in range(labels.shape[0]):
+        for j in range(labels.shape[1]):
+            if labels[i][j] < 396:
+                str = generator.unique_draw[labels[i][j]]
+                type = type_dict[str[0]]
+                sep = str.split(",")
+                params = (type, int(sep[0][2:]), int(sep[1]), int(sep[2][:-1]))
+                labels_cont[i][j] = 4 + param_indices.index(params)
+
+    return labels_cont
+
 prev_test_loss = 1e20
 prev_test_cd = 1e20
 prev_test_iou = 0
@@ -111,6 +132,7 @@ for epoch in range(config.epochs):
         for _ in range(config.num_traj):
             for k in data_labels_paths.keys():
                 data, labels = next(train_gen_objs[k])
+                labels_cont = torch.from_numpy(labels_to_cont(labels)).float()
                 data = data[:, :, 0:1, :, :]
                 one_hot_labels = prepare_input_op(labels,
                                                   len(generator.unique_draw))
@@ -119,12 +141,7 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).to(device)
                 labels = Variable(torch.from_numpy(labels)).to(device)
                 outputs = imitate_net([data, one_hot_labels, k])
-                print(data.shape)
-                print(labels.shape)
-                print(len(outputs))
-
-                loss_k = (losses_joint(outputs, labels, time_steps=k + 1) / (
-                    k + 1)) / len(data_labels_paths.keys()) / config.num_traj
+                loss_k = imitate_net.loss_function(outputs, labels_cont) / len(data_labels_paths.keys()) / config.num_traj
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k

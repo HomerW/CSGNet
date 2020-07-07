@@ -10,6 +10,7 @@ from ..utils.generators.mixed_len_generator import Parser, \
     SimulateStack
 from typing import List
 
+device = torch.device("cpu")
 
 class Encoder(nn.Module):
     def __init__(self, dropout=0.2):
@@ -66,14 +67,14 @@ class ImitateJoint(nn.Module):
         self.out_sz = output_size
 
         # Dense layer to project input ops(labels) to input of rnn
-        self.input_op_sz = 128
-        self.dense_input_op = nn.Linear(
-            in_features=self.num_draws + 1, out_features=self.input_op_sz)
+        # self.input_op_sz = 128
+        # self.dense_input_op = nn.Linear(
+        #     in_features=self.num_draws + 1, out_features=self.input_op_sz)
 
         self.rnn = nn.GRU(
             input_size=self.in_sz,
             hidden_size=self.hd_sz,
-            batch_first=False)
+            batch_first=True)
 
         self.dense_fc_1 = nn.Linear(
             in_features=self.hd_sz, out_features=self.hd_sz)
@@ -106,11 +107,11 @@ class ImitateJoint(nn.Module):
 
         assert data.size()[0] == program_len + 1, "Incorrect stack size!!"
         batch_size = data.size()[1]
-        # h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
+        # h = Variable(torch.zeros(1, batch_size, self.hd_sz)).to(device)
         x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
-        x_f = x_f.view(1, batch_size, self.in_sz)
+        x_f = x_f.view(batch_size, 1, self.in_sz)
 
-        input = x_f.repeat(x_f, program_len)
+        input = x_f.repeat(1, program_len + 1, 1)
         output, _ = self.rnn(input)
         hd = self.relu(self.dense_fc_1(self.drop(output)))
         return self.dense_output(self.drop(hd))
@@ -130,6 +131,11 @@ class ImitateJoint(nn.Module):
         #     output = self.logsoftmax(self.dense_output(self.drop(hd)))
         #     outputs.append(output)
         # return outputs
+
+    def loss_function(self, outputs, labels):
+        params = (4 + 3*64*64*32)*torch.sigmoid(outputs)[:, :, 0]
+        return F.mse_loss(params, labels)
+
 
 
 class ParseModelOutput:
