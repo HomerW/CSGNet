@@ -31,7 +31,8 @@ num_traj = 1
 canvas_shape = 64
 
 # Learning rate
-lr = 0.001
+# lr = 0.001
+lr = 0.0001
 
 # Optimizer: RL training -> "sgd" or supervised training -> "adam"
 optim = adam

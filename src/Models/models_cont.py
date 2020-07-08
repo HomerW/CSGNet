@@ -9,6 +9,7 @@ from torch.autograd.variable import Variable
 from ..utils.generators.mixed_len_generator import Parser, \
     SimulateStack
 from typing import List
+from .mdn import MixtureDensityNetwork
 
 device = torch.device("cpu")
 
@@ -81,8 +82,8 @@ class ImitateJoint(nn.Module):
         self.dense_output = nn.Linear(
             in_features=self.hd_sz, out_features=self.out_sz)
         self.drop = nn.Dropout(dropout)
-        self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
+        self.mdn = MixtureDensityNetwork(self.out_sz, 4, 10)
 
     def forward(self, x: List):
         """
@@ -113,9 +114,8 @@ class ImitateJoint(nn.Module):
 
         input = x_f.repeat(1, program_len + 1, 1)
         output, _ = self.rnn(input)
-        hd = self.relu(self.dense_fc_1(self.drop(output)))
-        return self.dense_output(self.drop(hd))
-
+        hd = self.relu(self.dense_fc_1(output))
+        return self.relu(self.dense_output(hd))
 
         # outputs = []
         # for timestep in range(0, program_len + 1):
@@ -132,9 +132,13 @@ class ImitateJoint(nn.Module):
         #     outputs.append(output)
         # return outputs
 
-    def loss_function(self, outputs, labels):
-        params = (4 + 3*64*64*32)*torch.sigmoid(outputs)[:, :, 0]
-        return F.mse_loss(params, labels)
+    def loss_function(self, outputs, labels, program_len):
+        # params = (4 + 3*64*64*32)*torch.sigmoid(outputs)[:, :, 0]
+        # return F.mse_loss(params, labels)
+        loss = 0
+        for i in range(program_len + 1):
+            loss += self.mdn.loss(outputs[:, i], labels[:, i]).mean()
+        return loss
 
 
 

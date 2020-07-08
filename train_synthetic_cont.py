@@ -59,7 +59,7 @@ generator = MixedGenerateData(
 imitate_net = ImitateJoint(
     input_size=config.input_size,
     hidden_size=config.hidden_size,
-    output_size = 1,
+    output_size = 2048,
     encoder=encoder_net)
 imitate_net.to(device)
 
@@ -102,7 +102,7 @@ def labels_to_cont(labels):
     param_indices = list(product(range(3), range(1, 65), range(1, 65), range(1, 33)))
     num_prim = len(param_indices)
     type_dict = {"c": 0, "s": 1, "t": 2}
-    labels_cont = np.zeros(labels.shape)
+    labels_cont = np.zeros((labels.shape[0], labels.shape[1], 1))
     labels_cont[labels == 396] = 0
     labels_cont[labels == 397] = 1
     labels_cont[labels == 398] = 2
@@ -118,6 +118,27 @@ def labels_to_cont(labels):
 
     return labels_cont
 
+# def labels_to_cont(labels):
+#     type_dict = {"c": 0, "s": 1, "t": 2}
+#     labels_cont = np.zeros((labels.shape[0], labels.shape[1], 4))
+#     labels_cont[labels == 396, 0] = 0
+#     labels_cont[labels == 397, 0] = 1
+#     labels_cont[labels == 398, 0] = 2
+#     labels_cont[labels == 399, 0] = 3
+#     labels_cont[labels <= 90, 0] = 4
+#     labels_cont[((labels > 90) & (labels <= 259)), 0] = 5
+#     labels_cont[labels > 259, 0] = 6
+#     for i in range(labels.shape[0]):
+#         for j in range(labels.shape[1]):
+#             if labels[i][j] < 396:
+#                 str = generator.unique_draw[labels[i][j]]
+#                 sep = str.split(",")
+#                 labels_cont[i][j][1] = int(sep[0][2:])
+#                 labels_cont[i][j][2] = int(sep[1])
+#                 labels_cont[i][j][3] = int(sep[2][:-1])
+#
+#     return labels_cont
+
 prev_test_loss = 1e20
 prev_test_cd = 1e20
 prev_test_iou = 0
@@ -132,7 +153,7 @@ for epoch in range(config.epochs):
         for _ in range(config.num_traj):
             for k in data_labels_paths.keys():
                 data, labels = next(train_gen_objs[k])
-                labels_cont = torch.from_numpy(labels_to_cont(labels)).float()
+                labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
                 data = data[:, :, 0:1, :, :]
                 one_hot_labels = prepare_input_op(labels,
                                                   len(generator.unique_draw))
@@ -141,7 +162,7 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).to(device)
                 labels = Variable(torch.from_numpy(labels)).to(device)
                 outputs = imitate_net([data, one_hot_labels, k])
-                loss_k = imitate_net.loss_function(outputs, labels_cont) / len(data_labels_paths.keys()) / config.num_traj
+                loss_k = imitate_net.loss_function(outputs, labels_cont, k) / len(data_labels_paths.keys()) / config.num_traj
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k
