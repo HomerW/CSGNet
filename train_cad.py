@@ -2,13 +2,11 @@
 Training script specially designed for REINFORCE training.
 """
 
-# import logging
 import numpy as np
 import torch
 import torch.optim as optim
 import sys
 from src.utils import read_config
-# from tensorboard_logger import configure, log_value
 from torch.autograd.variable import Variable
 from src.Models.models import ImitateJoint
 from src.Models.models import Encoder
@@ -31,19 +29,6 @@ config.write_config("log/configs/{}_config.json".format(model_name))
 config.train_size = 10000
 config.test_size = 3000
 print(config.config)
-
-# # Setup Tensorboard logger
-# configure("log/tensorboard/{}".format(model_name), flush_secs=5)
-
-# # Setup logger
-# logger = logging.getLogger(__name__)
-# logger.setLevel(logging.INFO)
-# formatter = logging.Formatter('%(asctime)s:%(name)s:%(message)s')
-# file_handler = logging.FileHandler(
-#     'log/logger/{}.log'.format(model_name), mode='w')
-# file_handler.setFormatter(formatter)
-# logger.addHandler(file_handler)
-# logger.info(config.config)
 
 # CNN encoder
 encoder_net = Encoder(config.encoder_drop)
@@ -130,7 +115,7 @@ for epoch in range(config.epochs):
             one_hot_labels = prepare_input_op(labels, len(unique_draw))
             one_hot_labels = Variable(
                 torch.from_numpy(one_hot_labels)).cuda()
-            data = Variable(torch.from_numpy(data_), volatile=False).cuda()
+            data = Variable(torch.from_numpy(data_)).cuda()
             outputs, samples = imitate_net([data, one_hot_labels, max_len])
             R = reinforce.generate_rewards(
                 samples,
@@ -153,65 +138,65 @@ for epoch in range(config.epochs):
         Rs = Rs / (num_traj)
 
         # Clip gradient to avoid explosions
-        # logger.info(torch.nn.utils.clip_grad_norm(imitate_net.parameters(), 10))
-        torch.nn.utils.clip_grad_norm(imitate_net.parameters(), 10)
+        print(f"clipped grad norm: {torch.nn.utils.clip_grad_norm_(imitate_net.parameters(), 10)}")
         # take gradient step only after having accumulating all gradients.
         optimizer.step()
         l = loss_sum
         train_loss += l
-        # log_value('train_loss_batch',
-        #           l.cpu().numpy(),
-        #           epoch * (config.train_size //
-        #                    (config.batch_size)) + batch_idx)
+        print('train_loss_batch',
+                  l.cpu().numpy(),
+                  epoch * (config.train_size //
+                           (config.batch_size)) + batch_idx)
         total_reward += np.mean(Rs)
 
-        # log_value('train_reward_batch', np.mean(Rs),
-        #           epoch * (config.train_size //
-        #                    (config.batch_size)) + batch_idx)
+        print('train_reward_batch', np.mean(Rs),
+                  epoch * (config.train_size //
+                           (config.batch_size)) + batch_idx)
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
-    # log_value('train_loss', mean_train_loss.cpu().numpy(), epoch)
-    # log_value('train_reward',
-    #           total_reward / (config.train_size //
-    #                           (config.batch_size)), epoch)
+    print('train_loss', mean_train_loss.cpu().numpy(), epoch)
+    print('train_reward',
+              total_reward / (config.train_size //
+                              (config.batch_size)), epoch)
 
     test_losses = 0
     total_reward = 0
     imitate_net.eval()
     imitate_net.epsilon = 0
     for batch_idx in range(config.test_size // config.batch_size):
-        loss = Variable(torch.zeros(1)).cuda()
-        Rs = np.zeros((config.batch_size, 1))
-        labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
-        data_ = next(val_gen)
-        one_hot_labels = prepare_input_op(labels, len(unique_draw))
-        one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
-        data = Variable(torch.from_numpy(data_), volatile=True).cuda()
-        outputs, samples = imitate_net([data, one_hot_labels, max_len])
-        R = reinforce.generate_rewards(
-            samples,
-            data_,
-            time_steps=max_len,
-            stack_size=max_len // 2 + 1,
-            reward=reward,
-            power=power)
-        R = R[0]
-        loss = loss + reinforce.pg_loss_var(R, samples, outputs)
+        with torch.no_grad():
+            loss = Variable(torch.zeros(1)).cuda()
+            Rs = np.zeros((config.batch_size, 1))
+            labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
+            data_ = next(val_gen)
+            one_hot_labels = prepare_input_op(labels, len(unique_draw))
+            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
+            data = Variable(torch.from_numpy(data_)).cuda()
+            outputs, samples = imitate_net([data, one_hot_labels, max_len])
+            R = reinforce.generate_rewards(
+                samples,
+                data_,
+                time_steps=max_len,
+                stack_size=max_len // 2 + 1,
+                reward=reward,
+                power=power)
+            R = R[0]
+            loss = loss + reinforce.pg_loss_var(R, samples, outputs)
 
-        if reward == "chamfer":
-            Rs = Rs + R
+            if reward == "chamfer":
+                Rs = Rs + R
 
-        elif reward == "iou":
-            Rs = Rs + (R**(1 / power))
+            elif reward == "iou":
+                Rs = Rs + (R**(1 / power))
 
-        test_losses += (loss.data)
-        Rs = Rs
-        total_reward += (np.mean(Rs))
+            test_losses += (loss.data)
+            Rs = Rs
+            total_reward += (np.mean(Rs))
     total_reward = total_reward / (config.test_size // config.batch_size)
 
     test_loss = test_losses.cpu().numpy() / (config.test_size // config.batch_size)
-    # log_value('test_loss', test_loss, epoch)
-    # log_value('test_reward', total_reward, epoch)
+    print('test_loss', test_loss, epoch)
+    print('test_reward', total_reward, epoch)
     if config.lr_sch:
         # Negative of the rewards should be minimized
         reduce_plat.reduce_on_plateu(-total_reward)
@@ -224,7 +209,7 @@ for epoch in range(config.epochs):
 
     # Save when test reward is increased
     if total_reward > prev_test_reward:
-        # logger.info("Saving the Model weights")
+        print("Saving the Model weights")
         torch.save(imitate_net.state_dict(),
                    "trained_models/{}.pth".format(model_name))
         prev_test_reward = total_reward
