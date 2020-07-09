@@ -300,7 +300,8 @@ def load_generate(iter):
 def load_infer(iter):
     encoder_net, imitate_net = get_csgnet()
     print("pre loading model")
-    pretrained_dict = torch.load(f"trained_models/imitate-{iter}.pth")
+    # pretrained_dict = torch.load(f"trained_models/imitate-{iter}.pth")
+    pretrained_dict = torch.load(f"trained_models/cad_3_2.pth")
     imitate_net_dict = imitate_net.state_dict()
     pretrained_dict = {
         k: v
@@ -347,5 +348,5 @@ def wake_sleep(iterations):
         torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
         torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
-wake_sleep(50)
-# load_generate(16)
+# wake_sleep(50)
+load_infer(16)

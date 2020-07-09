@@ -11,7 +11,7 @@ from ..utils.generators.mixed_len_generator import Parser, \
 from typing import List
 from .mdn import MixtureDensityNetwork
 
-device = torch.device("cpu")
+device = torch.device("cuda")
 
 class Encoder(nn.Module):
     def __init__(self, dropout=0.2):
@@ -83,7 +83,7 @@ class ImitateJoint(nn.Module):
             in_features=self.hd_sz, out_features=self.out_sz)
         self.drop = nn.Dropout(dropout)
         self.relu = nn.ReLU()
-        self.mdn = MixtureDensityNetwork(self.out_sz, 4, 10)
+        self.mdn = MixtureDensityNetwork(self.out_sz, 3, 10)
 
     def forward(self, x: List):
         """
@@ -114,8 +114,8 @@ class ImitateJoint(nn.Module):
 
         input = x_f.repeat(1, program_len + 1, 1)
         output, _ = self.rnn(input)
-        hd = self.relu(self.dense_fc_1(output))
-        return self.relu(self.dense_output(hd))
+        hd = self.relu(self.dense_fc_1(self.drop(output)))
+        return self.relu(self.dense_output(self.drop(hd)))
 
         # outputs = []
         # for timestep in range(0, program_len + 1):
@@ -135,16 +135,18 @@ class ImitateJoint(nn.Module):
     def loss_function(self, outputs, labels, program_len):
         # params = (4 + 3*64*64*32)*torch.sigmoid(outputs)[:, :, 0]
         # return F.mse_loss(params, labels)
-        loss = 0
+        type_loss = F.cross_entropy(outputs[:, :, :7].permute(0, 2, 1), labels[:, :, 0].long())
+        param_loss = 0
+        # loss = 0
         for i in range(program_len + 1):
-            loss += self.mdn.loss(outputs[:, i], labels[:, i]).mean()
-        return loss
+            param_loss += self.mdn.loss(outputs[:, i], labels[:, i, 1:]).mean()
+            # loss += self.mdn.loss(outputs[:, i], labels[:, i]).mean()
+        return 0*param_loss + type_loss
 
 
 
 class ParseModelOutput:
-    def __init__(self, unique_draws: List, stack_size: int, steps: int,
-                 canvas_shape: List):
+    def __init__(self, stack_size, canvas_shape , mdn):
         """
         This class parses complete output from the network which are in joint
         fashion. This class can be used to generate final canvas and
@@ -156,10 +158,9 @@ class ParseModelOutput:
         """
         self.canvas_shape = canvas_shape
         self.stack_size = stack_size
-        self.steps = steps
         self.Parser = Parser()
         self.sim = SimulateStack(self.stack_size, self.canvas_shape)
-        self.unique_draws = unique_draws
+        self.mdn = mdn
 
     def get_final_canvas(self,
                          outputs: List,
@@ -177,19 +178,34 @@ class ParseModelOutput:
         :return: stack: Predicted final stack for correct programs
         :return: correct_programs: Indices of correct programs
         """
-        batch_size = outputs[0].size()[0]
+        batch_size = outputs.size()[0]
+        steps = outputs.size()[1]
 
         # Initialize empty expression string, len equal to batch_size
         correct_programs = []
         expressions = [""] * batch_size
-        labels = [
-            torch.max(outputs[i], 1)[1].data.cpu().numpy()
-            for i in range(self.steps)
-        ]
+        type_labels = torch.argmax(outputs[:, :, :7], dim=2).data.cpu().numpy()
 
         for j in range(batch_size):
-            for i in range(self.steps):
-                expressions[j] += self.unique_draws[labels[i][j]]
+            for i in range(steps):
+                if type_labels[j][i] == 0:
+                    expressions[j] += "+"
+                if type_labels[j][i] == 1:
+                    expressions[j] += "*"
+                if type_labels[j][i] == 2:
+                    expressions[j] += "-"
+                if type_labels[j][i] == 3:
+                    expressions[j] += "$"
+                if type_labels[j][i] > 3:
+                    params = F.relu(self.mdn.sample(outputs[j:j+1, i]))
+                    params = params.cpu().numpy().reshape((-1,))
+                    params = str([int(x) for x in params])[1:-1].replace(" ", "")
+                    if type_labels[j][i] == 4:
+                        expressions[j] += f"c({params})"
+                    if type_labels[j][i] == 5:
+                        expressions[j] += f"s({params})"
+                    if type_labels[j][i] == 6:
+                        expressions[j] += f"t({params})"
 
         # Remove the stop symbol and later part of the expression
         for index, exp in enumerate(expressions):

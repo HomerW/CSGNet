@@ -27,7 +27,7 @@ from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
 from itertools import product
 
-device = torch.device("cpu")
+device = torch.device("cuda")
 
 config = read_config.Config("config_synthetic.yml")
 
@@ -59,7 +59,7 @@ generator = MixedGenerateData(
 imitate_net = ImitateJoint(
     input_size=config.input_size,
     hidden_size=config.hidden_size,
-    output_size = 2048,
+    output_size = 2048+7,
     encoder=encoder_net)
 imitate_net.to(device)
 
@@ -98,46 +98,66 @@ for k in data_labels_paths.keys():
         num_test_images=dataset_sizes[k][1],
         jitter_program=True)
 
-def labels_to_cont(labels):
-    param_indices = list(product(range(3), range(1, 65), range(1, 65), range(1, 33)))
-    num_prim = len(param_indices)
-    type_dict = {"c": 0, "s": 1, "t": 2}
-    labels_cont = np.zeros((labels.shape[0], labels.shape[1], 1))
-    labels_cont[labels == 396] = 0
-    labels_cont[labels == 397] = 1
-    labels_cont[labels == 398] = 2
-    labels_cont[labels == 399] = 3
-    for i in range(labels.shape[0]):
-        for j in range(labels.shape[1]):
-            if labels[i][j] < 396:
-                str = generator.unique_draw[labels[i][j]]
-                type = type_dict[str[0]]
-                sep = str.split(",")
-                params = (type, int(sep[0][2:]), int(sep[1]), int(sep[2][:-1]))
-                labels_cont[i][j] = 4 + param_indices.index(params)
-
-    return labels_cont
-
 # def labels_to_cont(labels):
+#     param_indices = list(product(range(3), range(1, 65), range(1, 65), range(1, 33)))
+#     num_prim = len(param_indices)
 #     type_dict = {"c": 0, "s": 1, "t": 2}
-#     labels_cont = np.zeros((labels.shape[0], labels.shape[1], 4))
-#     labels_cont[labels == 396, 0] = 0
-#     labels_cont[labels == 397, 0] = 1
-#     labels_cont[labels == 398, 0] = 2
-#     labels_cont[labels == 399, 0] = 3
-#     labels_cont[labels <= 90, 0] = 4
-#     labels_cont[((labels > 90) & (labels <= 259)), 0] = 5
-#     labels_cont[labels > 259, 0] = 6
+#     labels_cont = np.zeros((labels.shape[0], labels.shape[1], 1))
+#     labels_cont[labels == 396] = 0
+#     labels_cont[labels == 397] = 1
+#     labels_cont[labels == 398] = 2
+#     labels_cont[labels == 399] = 3
 #     for i in range(labels.shape[0]):
 #         for j in range(labels.shape[1]):
 #             if labels[i][j] < 396:
 #                 str = generator.unique_draw[labels[i][j]]
+#                 type = type_dict[str[0]]
 #                 sep = str.split(",")
-#                 labels_cont[i][j][1] = int(sep[0][2:])
-#                 labels_cont[i][j][2] = int(sep[1])
-#                 labels_cont[i][j][3] = int(sep[2][:-1])
+#                 params = (type, int(sep[0][2:]), int(sep[1]), int(sep[2][:-1]))
+#                 labels_cont[i][j] = 4 + param_indices.index(params)
 #
 #     return labels_cont
+
+def labels_to_cont(labels):
+    labels_cont = np.zeros((labels.shape[0], labels.shape[1], 4))
+    labels_cont[labels == 396, 0] = 0
+    labels_cont[labels == 397, 0] = 1
+    labels_cont[labels == 398, 0] = 2
+    labels_cont[labels == 399, 0] = 3
+    labels_cont[labels <= 90, 0] = 4
+    labels_cont[((labels > 90) & (labels <= 259)), 0] = 5
+    labels_cont[labels > 259, 0] = 6
+    for i in range(labels.shape[0]):
+        for j in range(labels.shape[1]):
+            if labels[i][j] < 396:
+                str = generator.unique_draw[labels[i][j]]
+                sep = str.split(",")
+                labels_cont[i][j][1] = int(sep[0][2:])
+                labels_cont[i][j][2] = int(sep[1])
+                labels_cont[i][j][3] = int(sep[2][:-1])
+
+    return labels_cont
+
+def cont_to_labels(labels_cont):
+    type_dict = {"c": 0, "s": 1, "t": 2}
+    labels = np.zeros((labels.shape[0], labels.shape[1], 4))
+    labels_cont[labels == 396, 0] = 0
+    labels_cont[labels == 397, 0] = 1
+    labels_cont[labels == 398, 0] = 2
+    labels_cont[labels == 399, 0] = 3
+    labels_cont[labels <= 90, 0] = 4
+    labels_cont[((labels > 90) & (labels <= 259)), 0] = 5
+    labels_cont[labels > 259, 0] = 6
+    for i in range(labels.shape[0]):
+        for j in range(labels.shape[1]):
+            if labels[i][j] < 396:
+                str = generator.unique_draw[labels[i][j]]
+                sep = str.split(",")
+                labels_cont[i][j][1] = int(sep[0][2:])
+                labels_cont[i][j][2] = int(sep[1])
+                labels_cont[i][j][3] = int(sep[2][:-1])
+
+    return labels_cont
 
 prev_test_loss = 1e20
 prev_test_cd = 1e20
@@ -150,19 +170,21 @@ for epoch in range(config.epochs):
                            (config.batch_size * config.num_traj)):
         optimizer.zero_grad()
         loss = Variable(torch.zeros(1)).to(device).data
+        acc = 0
         for _ in range(config.num_traj):
             for k in data_labels_paths.keys():
                 data, labels = next(train_gen_objs[k])
                 labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
                 data = data[:, :, 0:1, :, :]
-                one_hot_labels = prepare_input_op(labels,
-                                                  len(generator.unique_draw))
-                one_hot_labels = Variable(
-                    torch.from_numpy(one_hot_labels)).to(device)
+                # one_hot_labels = prepare_input_op(labels,
+                #                                   len(generator.unique_draw))
+                # one_hot_labels = Variable(
+                #     torch.from_numpy(one_hot_labels)).to(device)
                 data = Variable(torch.from_numpy(data)).to(device)
-                labels = Variable(torch.from_numpy(labels)).to(device)
-                outputs = imitate_net([data, one_hot_labels, k])
-                loss_k = imitate_net.loss_function(outputs, labels_cont, k) / len(data_labels_paths.keys()) / config.num_traj
+                # labels = Variable(torch.from_numpy(labels)).to(device)
+                outputs = imitate_net([data, None, k])
+                loss_k = imitate_net.loss_function(outputs, labels_cont, k) / types_prog / config.num_traj
+                acc += float((torch.argmax(outputs[:, :, :7], dim=2) == labels_cont[:, :, 0]).float().sum()) / (len(labels_cont) * (k+1)) / types_prog / config.num_traj
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k
@@ -170,6 +192,7 @@ for epoch in range(config.epochs):
         optimizer.step()
         train_loss += loss
         print(f"batch {batch_idx} train loss: {loss.cpu().numpy()}")
+        print(f"acc: {acc}")
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
     print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
@@ -179,23 +202,23 @@ for epoch in range(config.epochs):
     IOU = 0
     COS = 0
     CD = 0
+    correct_programs = 0
     for batch_idx in range(config.test_size // (config.batch_size)):
-        parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
-                          config.canvas_shape)
+        parser = ParseModelOutput(max_len // 2 + 1, config.canvas_shape, imitate_net.mdn)
         for k in data_labels_paths.keys():
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])
-                one_hot_labels = prepare_input_op(labels, len(
-                    generator.unique_draw))
-                one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
+                labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
+                # one_hot_labels = prepare_input_op(labels, len(
+                #     generator.unique_draw))
+                # one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
                 data = Variable(torch.from_numpy(data_)).to(device)
-                labels = Variable(torch.from_numpy(labels)).to(device)
-                test_outputs = imitate_net([data, one_hot_labels, k])
-                loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
-                         (k + 1)) / types_prog
-                test_output = imitate_net.test([data, one_hot_labels, max_len])
+                # labels = Variable(torch.from_numpy(labels)).to(device)
+                outputs = imitate_net([data, None, k])
+                loss += imitate_net.loss_function(outputs, labels_cont, k) / types_prog
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
-                    test_output, if_just_expressions=False, if_pred_images=True)
+                    outputs, if_just_expressions=False, if_pred_images=True)
+                correct_programs += len(correct_prog)
                 target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
                 iou = np.sum(np.logical_and(target_images, pred_images),
                              (1, 2)) / \
@@ -218,10 +241,11 @@ for epoch in range(config.epochs):
     print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
                                       metrics["iou"], metrics["cd"], test_loss,))
+    print(f"CORRECT PROGRAMS: {correct_programs}")
 
-    del test_losses, test_outputs
+    del test_losses, outputs
     if prev_test_cd > metrics["cd"]:
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
-                   "trained_models/{}.pth".format(model_name))
+                   "trained_models/synthetic_cont.pth")
         prev_test_cd = metrics["cd"]
