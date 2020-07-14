@@ -67,15 +67,17 @@ class ImitateJoint(nn.Module):
         self.encoder = encoder
         self.out_sz = output_size
 
-        # Dense layer to project input ops(labels) to input of rnn
-        # self.input_op_sz = 128
-        # self.dense_input_op = nn.Linear(
-        #     in_features=self.num_draws + 1, out_features=self.input_op_sz)
+        # Dense layer to project input ops(labels) to input of rnn (EDITED TO EMBEDDING)
+        self.emb_size = 64
+        self.param_size = 64
+        self.embedding = nn.Embedding(7, self.emb_size)
+        self.dense_params = nn.Linear(3, self.param_size)
+        self.input_op_sz = self.emb_size + self.param_size
 
         self.rnn = nn.GRU(
-            input_size=self.in_sz,
+            input_size=self.in_sz + self.input_op_sz,
             hidden_size=self.hd_sz,
-            batch_first=True)
+            batch_first=False)
 
         self.dense_fc_1 = nn.Linear(
             in_features=self.hd_sz, out_features=self.hd_sz)
@@ -85,7 +87,7 @@ class ImitateJoint(nn.Module):
         self.relu = nn.ReLU()
         self.mdn = MixtureDensityNetwork(self.out_sz, 3, 10)
 
-    def forward(self, x: List):
+    def forward(self, data, input_op, program_len):
         """
         Forward pass for  all architecture
         :param x: Has different meaning with different mode of training
@@ -104,23 +106,57 @@ class ImitateJoint(nn.Module):
         network has equal contribution coming from programs of different lengths.
         Training is done using the script train_synthetic.py
         '''
-        data, input_op, program_len = x
 
         assert data.size()[0] == program_len + 1, "Incorrect stack size!!"
         batch_size = data.size()[1]
-        # h = Variable(torch.zeros(1, batch_size, self.hd_sz)).to(device)
+        h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
         x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
-        x_f = x_f.view(batch_size, 1, self.in_sz)
+        x_f = x_f.view(1, batch_size, self.in_sz)
 
-        input = x_f.repeat(1, program_len + 1, 1)
-        output, _ = self.rnn(input)
-        hd = self.relu(self.dense_fc_1(self.drop(output)))
-        return self.relu(self.dense_output(self.drop(hd)))
+        # remove stop token for input to decoder
+        input_op = input_op[:, :-1, :]
+
+        input_params = self.dense_params(input_op[:, :, 1:])
+        input_type = self.embedding(input_op[:, :, 0].long())
+        input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=2)).permute(1, 0, 2)
+        x_f = x_f.repeat(program_len+1, 1, 1)
+        input = torch.cat((self.drop(x_f), input_op_rnn), 2)
+        print(input.shape)
+        output, h = self.rnn(input, h)
+        output = self.relu(self.dense_fc_1(self.drop(output)))
+        output = self.dense_output(self.drop(output))
+        return output
+
+    def test(self, data, input_op, program_len):
+        batch_size = data.size()[1]
+        h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
+        x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
+        x_f = x_f.view(1, batch_size, self.in_sz)
+
+        outputs = []
+        last_output = input_op[:, 0:1, :]
+        for timestep in range(0, program_len + 1):
+            # X_f is always input to the network at every time step
+            # along with previous predicted label
+            input_params = self.dense_params(last_output[:, :, 1:])
+            input_type = self.embedding(last_output[:, :, 0:1])
+            # (timesteps, batch, features)
+            input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=2)).permute(1, 0, 2)
+            input = torch.cat((self.drop(x_f), input_op_rnn), 2)
+            h, _ = self.rnn(input, h)
+            hd = self.relu(self.dense_fc_1(self.drop(h)))
+            output = self.dense_output(self.drop(hd))
+            type = torch.argmax(output[:, :, :7], dim=2)
+            params = F.relu(self.mdn.sample(output))
+            print(output.shape)
+            print(params.shape)
+            print(type.shape)
+            last_output = torch.cat([type.reshape((batch_size, -1)), params.reshape((batch_size, -1))], dim=1)
+            outputs.append(output)
+        return outputs
 
         # outputs = []
         # for timestep in range(0, program_len + 1):
-        #     # X_f is always input to the RNN at every time step
-        #     # along with previous predicted label
         #     input_op_rnn = self.relu(
         #         self.dense_input_op(input_op[:, timestep, :]))
         #     input_op_rnn = input_op_rnn.view(1, batch_size,
@@ -128,21 +164,23 @@ class ImitateJoint(nn.Module):
         #     input = torch.cat((self.drop(x_f), input_op_rnn), 2)
         #     h, _ = self.rnn(input, h)
         #     hd = self.relu(self.dense_fc_1(self.drop(h[0])))
-        #     output = self.logsoftmax(self.dense_output(self.drop(hd)))
+        #     output = self.dense_output(self.drop(hd))
         #     outputs.append(output)
-        # return outputs
+        # return torch.stack(outputs)
 
     def loss_function(self, outputs, labels, program_len):
-        # params = (4 + 3*64*64*32)*torch.sigmoid(outputs)[:, :, 0]
-        # return F.mse_loss(params, labels)
+        # remove start token from label
+        labels = labels[:, 1:, :]
+        # (batch, timesteps, features)
+        outputs = outputs.permute(1, 0, 2)
         type_loss = F.cross_entropy(outputs[:, :, :7].permute(0, 2, 1), labels[:, :, 0].long())
         param_loss = 0
         # loss = 0
         for i in range(program_len + 1):
             param_loss += self.mdn.loss(outputs[:, i], labels[:, i, 1:]).mean()
-            # loss += self.mdn.loss(outputs[:, i], labels[:, i]).mean()
-        return 0*param_loss + type_loss
-
+        # scaling factor chosen to make param_loss and type_loss about equal
+        param_loss *= 0.02
+        return param_loss + type_loss
 
 
 class ParseModelOutput:
@@ -178,6 +216,7 @@ class ParseModelOutput:
         :return: stack: Predicted final stack for correct programs
         :return: correct_programs: Indices of correct programs
         """
+        outputs = outputs.permute(1, 0, 2)
         batch_size = outputs.size()[0]
         steps = outputs.size()[1]
 

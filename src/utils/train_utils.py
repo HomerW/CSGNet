@@ -79,6 +79,7 @@ def prepare_input_op(arr, maxx):
     for i in range(s[0]):
         for j in range(s[1]):
             array[i, j + 1, arr[i, j]] = 1
+    # array[range(s[0]), range(1, s[1]+2), arr] = 1
     return array
 
 

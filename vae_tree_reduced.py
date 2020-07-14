@@ -78,7 +78,7 @@ class VAE(nn.Module):
         else:
             # depth of 4 is enough to generate max_len=13 programs
             # todo: don't hardcode this
-            return traverse_test(z, 4)
+            return traverse_test(z, 20)
 
     def forward(self, x):
         mu, logvar = self.encode(x)

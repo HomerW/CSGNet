@@ -39,7 +39,7 @@ except ImportError:
     # If not tqdm is not available, provide a mock version of it
     def tqdm(x): return x
 
-from src.Models.models import Encoder
+from fid_model import FIDModel
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
 from src.utils.generators.shapenet_generater import Generator
 
@@ -199,7 +199,7 @@ def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
     if not os.path.exists(model_path):
         raise RuntimeError('Invalid path: %s' % model_path)
 
-    model = Encoder()
+    model = FIDModel()
 
     # preload
     pretrained_dict = torch.load(model_path, map_location=device)
@@ -232,7 +232,7 @@ def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
 
 
 if __name__ == '__main__':
-    fid_value = calculate_fid_given_paths("wake_sleep_data/inference/1/labels",
-                                          "trained_models/best-model.pth",
+    fid_value = calculate_fid_given_paths("wake_sleep_data/best_sequence_labels/",
+                                          "trained_models/fid-model.pth",
                                           100)
     print('FID: ', fid_value)

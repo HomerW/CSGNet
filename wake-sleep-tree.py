@@ -74,7 +74,7 @@ def train_inference(inference_net, iter):
     patience = 5
     num_worse = 0
 
-    for epoch in range(50):
+    for epoch in range(10):
         train_loss = 0
         Accuracies = []
         imitate_net.train()
@@ -175,7 +175,7 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for epoch in range(50):
+    for epoch in range(0):
         train_loss = 0
         batch_loss = 0
         np.random.shuffle(trees)
@@ -207,7 +207,7 @@ def train_generator(generator_net, iter):
         torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/labels.pt")
         torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/val/labels.pt")
         fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/tmp",
-                                              "trained_models/best-model-full.pth",
+                                              "trained_models/fid-model.pth",
                                               100,
                                               32)
         print('FID: ', fid_value)
@@ -218,6 +218,7 @@ def train_generator(generator_net, iter):
         latent = torch.randn(generator_latent_dim).to(device)
         sampled_tree = generator_net.decode(latent)
         sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
+        print(len(sampled_label))
         sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
         train_sample[i] = sampled_label.cpu().numpy()
     test_sample = np.zeros((inference_test_size, max_len))
@@ -233,11 +234,11 @@ def train_generator(generator_net, iter):
     os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/{iter}/val/"), exist_ok=True)
     torch.save(test_sample, f"wake_sleep_data_tree/generator/{iter}/val/labels.pt")
 
-    if not iter == 0:
-        fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/{iter}",
-                                              f"trained_models/best-model-full.pth",
-                                              100)
-        print('FID: ', fid_value)
+    # if not iter == 0:
+    #     fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/{iter}",
+    #                                           f"trained_models/best-model-full.pth",
+    #                                           100)
+    #     print('FID: ', fid_value)
 
 """
 Get initial pretrained CSGNet inference network
@@ -289,24 +290,24 @@ def wake_sleep(iterations):
     encoder_net, imitate_net = get_csgnet()
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size, max_len).to(device)
 
-    # print("pre loading model")
-    # pretrained_dict = torch.load("trained_models/best-model-full.pth", map_location=device)
-    # imitate_net_dict = imitate_net.state_dict()
-    # imitate_pretrained_dict = {
-    #     k: v
-    #     for k, v in pretrained_dict.items() if k in imitate_net_dict
-    # }
-    # imitate_net_dict.update(imitate_pretrained_dict)
-    # imitate_net.load_state_dict(imitate_net_dict)
+    print("pre loading model")
+    pretrained_dict = torch.load("trained_models_tree/generator-0.pth", map_location=device)
+    generator_net_dict = generator_net.state_dict()
+    generator_net_pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in generator_net_dict
+    }
+    generator_net_dict.update(generator_net_pretrained_dict)
+    generator_net.load_state_dict(generator_net_dict)
 
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
-        if not i == 0: # already inferred initial cad programs using pretrained model
-            infer_programs((encoder_net, imitate_net), i)
+        # if not i == 0: # already inferred initial cad programs using pretrained model
+        #     infer_programs((encoder_net, imitate_net), i)
         train_generator(generator_net, i)
-        train_inference((encoder_net, imitate_net), i)
+        # train_inference((encoder_net, imitate_net), i)
 
-        torch.save(imitate_net.state_dict(), f"trained_models_tree/imitate-{i}.pth")
-        torch.save(generator_net.state_dict(), f"trained_models_tree/generator-{i}.pth")
+        # torch.save(imitate_net.state_dict(), f"trained_models_tree/imitate-{i}.pth")
+        #torch.save(generator_net.state_dict(), f"trained_models_tree/generator-{i}.pth")
 
-wake_sleep(50)
+wake_sleep(1)

@@ -59,7 +59,8 @@ imitate_net = ImitateJoint(
     encoder=encoder_net,
     mode=config.mode,
     num_draws=len(generator.unique_draw),
-    canvas_shape=config.canvas_shape)
+    canvas_shape=config.canvas_shape,
+    teacher_force=True)
 imitate_net.cuda()
 
 if config.preload_model:
@@ -136,10 +137,6 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 outputs = imitate_net([data, one_hot_labels, k])
-                print(data.shape)
-                print(labels.shape)
-                print(len(outputs))
-
                 loss_k = (losses_joint(outputs, labels, time_steps=k + 1) / (
                     k + 1)) / len(data_labels_paths.keys()) / config.num_traj
                 loss_k.backward()
