@@ -64,7 +64,7 @@ generator = MixedGenerateData(
 imitate_net = ImitateJoint(
     input_size=config.input_size,
     hidden_size=config.hidden_size,
-    output_size = 2048+7,
+    output_size = 2048+8,
     encoder=encoder_net)
 imitate_net.to(device)
 
@@ -103,6 +103,7 @@ for k in data_labels_paths.keys():
         num_test_images=dataset_sizes[k][1],
         jitter_program=True)
 
+# returns (batch, timesteps, 4) continuous encoded labels
 def labels_to_cont(labels):
     s = labels.shape
     labels_cont = np.zeros((s[0], s[1], 4))
@@ -150,21 +151,16 @@ for epoch in range(config.epochs):
                 data, labels = next(train_gen_objs[k])
                 labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
                 data = data[:, :, 0:1, :, :]
-                # one_hot_labels = prepare_input_op(labels,
-                #                                   len(generator.unique_draw))
-                # one_hot_labels = Variable(
-                #     torch.from_numpy(one_hot_labels)).to(device)
                 data = Variable(torch.from_numpy(data)).to(device)
-                # labels = Variable(torch.from_numpy(labels)).to(device)
                 outputs = imitate_net(data, labels_cont, k)
                 loss_k = imitate_net.loss_function(outputs, labels_cont, k) / types_prog / config.num_traj
-                acc += float((torch.argmax(outputs[:, :, :7], dim=2).permute(1, 0) == labels_cont[:, 1:, 0]).float().sum()) \
+                acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
                        / (len(labels_cont) * (k+1)) / types_prog / config.num_traj
-                #print(torch.argmax(outputs[:, :, :7], dim=2).permute(1, 0))
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k
 
+        #torch.nn.utils.clip_grad_norm_(imitate_net.parameters(), 1e-5)
         optimizer.step()
         train_loss += loss
         print(f"batch {batch_idx} train loss: {loss.cpu().numpy()}")
@@ -172,6 +168,7 @@ for epoch in range(config.epochs):
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
     print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
+
     imitate_net.eval()
     loss = Variable(torch.zeros(1)).to(device)
     metrics = {"cos": 0, "iou": 0, "cd": 0}
@@ -187,11 +184,7 @@ for epoch in range(config.epochs):
                 data_, labels = next(test_gen_objs[k])
                 labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
                 data = data_[:, :, 0:1, :, :]
-                # one_hot_labels = prepare_input_op(labels, len(
-                #     generator.unique_draw))
-                # one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
                 data = Variable(torch.from_numpy(data)).to(device)
-                # labels = Variable(torch.from_numpy(labels)).to(device)
                 outputs = imitate_net.test(data, labels_cont, k)
                 loss += imitate_net.loss_function(outputs, labels_cont, k) / types_prog
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(

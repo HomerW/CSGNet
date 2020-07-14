@@ -70,14 +70,14 @@ class ImitateJoint(nn.Module):
         # Dense layer to project input ops(labels) to input of rnn (EDITED TO EMBEDDING)
         self.emb_size = 64
         self.param_size = 64
-        self.embedding = nn.Embedding(7, self.emb_size)
+        self.embedding = nn.Embedding(8, self.emb_size)
         self.dense_params = nn.Linear(3, self.param_size)
         self.input_op_sz = self.emb_size + self.param_size
 
         self.rnn = nn.GRU(
             input_size=self.in_sz + self.input_op_sz,
             hidden_size=self.hd_sz,
-            batch_first=False)
+            batch_first=True)
 
         self.dense_fc_1 = nn.Linear(
             in_features=self.hd_sz, out_features=self.hd_sz)
@@ -89,39 +89,23 @@ class ImitateJoint(nn.Module):
 
     def forward(self, data, input_op, program_len):
         """
-        Forward pass for  all architecture
-        :param x: Has different meaning with different mode of training
-        :return:
+        returns (batch, timesteps, features)
         """
-
-        '''
-        Variable length training. This mode runs for one
-        more than the length of program for producing stop symbol. Note
-        that there is no padding as is done in traditional RNN for
-        variable length programs. This is done mainly because of computational
-        efficiency of forward pass, that is, each batch contains only
-        programs of same length and losses from all batches of
-        different time-lengths are combined to compute gradient and
-        update in the network. This ensures that every update of the
-        network has equal contribution coming from programs of different lengths.
-        Training is done using the script train_synthetic.py
-        '''
 
         assert data.size()[0] == program_len + 1, "Incorrect stack size!!"
         batch_size = data.size()[1]
         h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
         x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
-        x_f = x_f.view(1, batch_size, self.in_sz)
+        x_f = x_f.view(batch_size, 1, self.in_sz)
 
         # remove stop token for input to decoder
         input_op = input_op[:, :-1, :]
 
         input_params = self.dense_params(input_op[:, :, 1:])
         input_type = self.embedding(input_op[:, :, 0].long())
-        input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=2)).permute(1, 0, 2)
-        x_f = x_f.repeat(program_len+1, 1, 1)
+        input_op_rnn = torch.cat([input_type, input_params], dim=2)
+        x_f = x_f.repeat(1, program_len+1, 1)
         input = torch.cat((self.drop(x_f), input_op_rnn), 2)
-        print(input.shape)
         output, h = self.rnn(input, h)
         output = self.relu(self.dense_fc_1(self.drop(output)))
         output = self.dense_output(self.drop(output))
@@ -131,49 +115,33 @@ class ImitateJoint(nn.Module):
         batch_size = data.size()[1]
         h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
         x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
-        x_f = x_f.view(1, batch_size, self.in_sz)
+        x_f = x_f.view(batch_size, self.in_sz)
 
         outputs = []
-        last_output = input_op[:, 0:1, :]
+        last_output = input_op[:, 0, :]
         for timestep in range(0, program_len + 1):
             # X_f is always input to the network at every time step
             # along with previous predicted label
-            input_params = self.dense_params(last_output[:, :, 1:])
-            input_type = self.embedding(last_output[:, :, 0:1])
+            input_params = self.dense_params(last_output[:, 1:])
+            input_type = self.embedding(last_output[:, 0].long())
             # (timesteps, batch, features)
-            input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=2)).permute(1, 0, 2)
-            input = torch.cat((self.drop(x_f), input_op_rnn), 2)
-            h, _ = self.rnn(input, h)
-            hd = self.relu(self.dense_fc_1(self.drop(h)))
+            input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
+            input = torch.cat((self.drop(x_f), input_op_rnn), 1).reshape((batch_size, 1, -1))
+            # why are we making the prev output the next hidden state here intead of prev hidden state? unclear about this
+            h, _ = self.rnn(input, h.reshape(1, batch_size, self.hd_sz))
+            hd = self.relu(self.dense_fc_1(self.drop(h[:, 0])))
             output = self.dense_output(self.drop(hd))
-            type = torch.argmax(output[:, :, :7], dim=2)
+            type = torch.argmax(output[:, :8], dim=1).float()
             params = F.relu(self.mdn.sample(output))
-            print(output.shape)
-            print(params.shape)
-            print(type.shape)
-            last_output = torch.cat([type.reshape((batch_size, -1)), params.reshape((batch_size, -1))], dim=1)
+            last_output = torch.cat([type.reshape((batch_size, 1)), params], dim=1)
             outputs.append(output)
-        return outputs
-
-        # outputs = []
-        # for timestep in range(0, program_len + 1):
-        #     input_op_rnn = self.relu(
-        #         self.dense_input_op(input_op[:, timestep, :]))
-        #     input_op_rnn = input_op_rnn.view(1, batch_size,
-        #                                      self.input_op_sz)
-        #     input = torch.cat((self.drop(x_f), input_op_rnn), 2)
-        #     h, _ = self.rnn(input, h)
-        #     hd = self.relu(self.dense_fc_1(self.drop(h[0])))
-        #     output = self.dense_output(self.drop(hd))
-        #     outputs.append(output)
-        # return torch.stack(outputs)
+        return torch.stack(outputs).permute(1, 0, 2)
 
     def loss_function(self, outputs, labels, program_len):
         # remove start token from label
         labels = labels[:, 1:, :]
-        # (batch, timesteps, features)
-        outputs = outputs.permute(1, 0, 2)
-        type_loss = F.cross_entropy(outputs[:, :, :7].permute(0, 2, 1), labels[:, :, 0].long())
+
+        type_loss = F.cross_entropy(outputs[:, :, :8].permute(0, 2, 1), labels[:, :, 0].long())
         param_loss = 0
         # loss = 0
         for i in range(program_len + 1):
@@ -216,14 +184,13 @@ class ParseModelOutput:
         :return: stack: Predicted final stack for correct programs
         :return: correct_programs: Indices of correct programs
         """
-        outputs = outputs.permute(1, 0, 2)
         batch_size = outputs.size()[0]
         steps = outputs.size()[1]
 
         # Initialize empty expression string, len equal to batch_size
         correct_programs = []
         expressions = [""] * batch_size
-        type_labels = torch.argmax(outputs[:, :, :7], dim=2).data.cpu().numpy()
+        type_labels = torch.argmax(outputs[:, :, :8], dim=2).data.cpu().numpy()
 
         for j in range(batch_size):
             for i in range(steps):
