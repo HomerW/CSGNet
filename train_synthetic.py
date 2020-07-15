@@ -34,19 +34,24 @@ print(config.config, flush=True)
 encoder_net = Encoder(config.encoder_drop)
 encoder_net.cuda()
 
-data_labels_paths = {
-    3: "data/synthetic/one_op/expressions.txt",
-    5: "data/synthetic/two_ops/expressions.txt",
-    7: "data/synthetic/three_ops/expressions.txt"
-}
-
-# proportion is in percentage. vary from [1, 100].
-proportion = config.proportion
+data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
+                     5: "data/synthetic/two_ops/expressions.txt",
+                     7: "data/synthetic/three_ops/expressions.txt",
+                     9: "data/synthetic/four_ops/expressions.txt",
+                     11: "data/synthetic/five_ops/expressions.txt",
+                     13: "data/synthetic/six_ops/expressions.txt"}
+# first element of list is num of training examples, and second is number of
+# testing examples.
+proportion = config.proportion  # proportion is in percentage. vary from [1, 100].
 dataset_sizes = {
-    3: [proportion * 250, proportion * 50],
-    5: [proportion * 1000, proportion * 100],
-    7: [proportion * 1500, proportion * 200]
+    3: [30000, 50 * proportion],
+    5: [110000, 500 * proportion],
+    7: [170000, 500 * proportion],
+    9: [270000, 500 * proportion],
+    11: [370000, 1000 * proportion],
+    13: [370000, 1000 * proportion]
 }
+dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -126,6 +131,7 @@ for epoch in range(config.epochs):
                            (config.batch_size * config.num_traj)):
         optimizer.zero_grad()
         loss = Variable(torch.zeros(1)).cuda().data
+        acc = 0
         for _ in range(config.num_traj):
             for k in data_labels_paths.keys():
                 data, labels = next(train_gen_objs[k])
@@ -137,6 +143,12 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 outputs = imitate_net([data, one_hot_labels, k])
+                if not imitate_net.tf:
+                    acc += float((torch.argmax(torch.stack(outputs), dim=2).permute(1, 0) == labels).float().sum()) \
+                           / (labels.shape[0] * labels.shape[1]) / len(data_labels_paths.keys()) / config.num_traj
+                else:
+                    acc += float((torch.argmax(outputs, dim=2).permute(1, 0) == labels).float().sum()) \
+                           / (labels.shape[0] * labels.shape[1]) / len(data_labels_paths.keys()) / config.num_traj
                 loss_k = (losses_joint(outputs, labels, time_steps=k + 1) / (
                     k + 1)) / len(data_labels_paths.keys()) / config.num_traj
                 loss_k.backward()
@@ -146,6 +158,7 @@ for epoch in range(config.epochs):
         optimizer.step()
         train_loss += loss
         print(f"batch {batch_idx} train loss: {loss.cpu().numpy()}")
+        print(f"acc: {acc}")
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
     print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
@@ -155,6 +168,8 @@ for epoch in range(config.epochs):
     IOU = 0
     COS = 0
     CD = 0
+    correct_programs = 0
+    pred_programs = 0
     for batch_idx in range(config.test_size // (config.batch_size)):
         parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
@@ -172,6 +187,8 @@ for epoch in range(config.epochs):
                 test_output = imitate_net.test([data, one_hot_labels, max_len])
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_output, if_just_expressions=False, if_pred_images=True)
+                correct_programs += len(correct_prog)
+                pred_programs += len(pred_prog)
                 target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
                 iou = np.sum(np.logical_and(target_images, pred_images),
                              (1, 2)) / \
@@ -194,10 +211,13 @@ for epoch in range(config.epochs):
     print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
                                       metrics["iou"], metrics["cd"], test_loss,))
+    print(f"CORRECT PROGRAMS: {correct_programs}")
+    print(f"PREDICTED PROGRAMS: {pred_programs}")
+    print(f"RATIO: {correct_programs/pred_programs}")
 
     del test_losses, test_outputs
     if prev_test_cd > metrics["cd"]:
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
-                   "trained_models/{}.pth".format(model_name))
+                   "trained_models/synthetic.pth")
         prev_test_cd = metrics["cd"]

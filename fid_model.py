@@ -17,7 +17,7 @@ class FIDModel(nn.Module):
         self.conv1 = nn.Conv2d(1, 8, 3, padding=(1, 1))
         self.conv2 = nn.Conv2d(8, 16, 3, padding=(1, 1))
         self.conv3 = nn.Conv2d(16, 32, 3, padding=(1, 1))
-        self.dense = nn.Linear(2048, 1)
+        self.dense = nn.Linear(2048, 3)
 
     def forward(self, x):
         batch_size = x.shape[0]
@@ -35,7 +35,7 @@ class FIDModel(nn.Module):
         return x
 
     def loss_function(self, logits, labels):
-        return F.binary_cross_entropy_with_logits(logits, labels)
+        return F.cross_entropy(logits, labels)
 
 if __name__ == '__main__':
     device = torch.device("cuda")
@@ -45,8 +45,8 @@ if __name__ == '__main__':
     generator_hidden_dim = 256
     generator_latent_dim = 20
     max_len = 13
-    batch_size = 100
-    real_batch_size = batch_size // 2
+    batch_size = 300
+    real_batch_size = batch_size // 3
     epochs = 50
 
     data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
@@ -64,7 +64,7 @@ if __name__ == '__main__':
         13: [370000, 100000]
     }
     dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
-    syn_batch_size = (batch_size // 2) // len(dataset_sizes)
+    syn_batch_size = (batch_size // 3) // len(dataset_sizes)
     syn_gen = MixedGenerateData(data_labels_paths=data_labels_paths,
                                 batch_size=syn_batch_size)
     syn_gen_train = {}
@@ -96,11 +96,28 @@ if __name__ == '__main__':
     real_gen_train = real_gen.get_train_data()
     real_gen_test = real_gen.get_test_data()
 
+    fake_batch_size = (batch_size // 3) // 2
+    fake_tree_gen = WakeSleepGen(f"wake_sleep_data_tree/generator/0/labels.pt",
+                                 f"wake_sleep_data_tree/generator/0/val/labels.pt",
+                                 batch_size=fake_batch_size,
+                                 train_size=inference_train_size,
+                                 test_size=inference_test_size)
+    tree_gen_train = fake_tree_gen.get_train_data()
+    tree_gen_test = fake_tree_gen.get_test_data()
+    fake_seq_gen = WakeSleepGen(f"wake_sleep_data/generator/0/labels.pt",
+                                 f"wake_sleep_data/generator/0/val/labels.pt",
+                                 batch_size=fake_batch_size,
+                                 train_size=inference_train_size,
+                                 test_size=inference_test_size)
+    seq_gen_train = fake_seq_gen.get_train_data()
+    seq_gen_test = fake_seq_gen.get_test_data()
+
     model = FIDModel().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    actual_batch_size = (real_batch_size + syn_batch_size * 6)
-    labels = torch.cat([torch.ones((actual_batch_size  // 2)), torch.zeros((actual_batch_size // 2))])
-    labels = labels.to(device).reshape((labels.shape[0], 1))
+    actual_batch_size = (real_batch_size + (syn_batch_size * 6) + (2 * fake_batch_size))
+    labels = torch.cat([torch.zeros(real_batch_size), torch.ones(syn_batch_size * 6),
+                        torch.full((2 * fake_batch_size,), 2)])
+    labels = labels.to(device).long()
 
     for epoch in range(epochs):
         train_loss = 0
@@ -108,12 +125,14 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             real_batch = next(real_gen_train)[0][-1, :, 0:1, :, :].to(device)
             syn_batch = get_syn_batch(syn_gen_train)
-            # each batch is 1/2 synthetic, 1/2 real inferred programs
-            batch = torch.cat([real_batch, syn_batch])
+            tree_batch = next(tree_gen_train)[0][-1, :, 0:1, :, :].to(device)
+            seq_batch = next(seq_gen_train)[0][-1, :, 0:1, :, :].to(device)
+            # each batch is 1/3 synthetic, 1/3 real inferred programs, 1/3 fake generated programs
+            batch = torch.cat([real_batch, syn_batch, tree_batch, seq_batch])
             logits = model(batch)
             loss = model.loss_function(logits, labels)
             train_loss += float(loss)
-            #print(f"epoch {epoch}, batch {batch_idx}, train loss {loss.data}")
+            print(f"epoch {epoch}, batch {batch_idx}, train loss {loss.data}")
             loss.backward()
             optimizer.step()
         print(f"average train loss {epoch}: {train_loss / (inference_train_size // batch_size)}")
@@ -122,8 +141,10 @@ if __name__ == '__main__':
             with torch.no_grad():
                 real_batch = next(real_gen_test)[0][-1, :, 0:1, :, :].to(device)
                 syn_batch = get_syn_batch(syn_gen_test)
-                # each batch is 1/2 synthetic, 1/2 real inferred programs
-                batch = torch.cat([real_batch, syn_batch])
+                tree_batch = next(tree_gen_train)[0][-1, :, 0:1, :, :].to(device)
+                seq_batch = next(seq_gen_train)[0][-1, :, 0:1, :, :].to(device)
+                # each batch is 1/3 synthetic, 1/3 real inferred programs, 1/3 fake generated programs
+                batch = torch.cat([real_batch, syn_batch, tree_batch, seq_batch])
                 logits = model(batch)
                 loss = model.loss_function(logits, labels)
                 test_loss += float(loss)

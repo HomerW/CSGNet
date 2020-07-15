@@ -19,8 +19,8 @@ import torch.optim as optim
 from torch.autograd.variable import Variable
 
 from src.Models.loss import losses_joint
-from src.Models.models_cont import Encoder
-from src.Models.models_cont import ImitateJoint, ParseModelOutput
+from src.Models.models_cont2 import Encoder
+from src.Models.models_cont2 import ImitateJoint, ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.learn_utils import LearningRate
@@ -54,7 +54,7 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
-dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
+dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -64,7 +64,7 @@ generator = MixedGenerateData(
 imitate_net = ImitateJoint(
     input_size=config.input_size,
     hidden_size=config.hidden_size,
-    output_size = 2048+8,
+    output_size = 8+3,
     encoder=encoder_net)
 imitate_net.to(device)
 
@@ -178,7 +178,7 @@ for epoch in range(config.epochs):
     correct_programs = 0
     pred_programs = 0
     for batch_idx in range(config.test_size // (config.batch_size)):
-        parser = ParseModelOutput(max_len // 2 + 1, config.canvas_shape, imitate_net.mdn)
+        parser = ParseModelOutput(max_len // 2 + 1, config.canvas_shape)
         for k in data_labels_paths.keys():
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])

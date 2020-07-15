@@ -127,9 +127,8 @@ class ImitateJoint(nn.Module):
             # (timesteps, batch, features)
             input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
             input = torch.cat((self.drop(x_f), input_op_rnn), 1).reshape((batch_size, 1, -1))
-            # why are we making the prev output the next hidden state here intead of prev hidden state? unclear about this
-            h, _ = self.rnn(input, h.reshape(1, batch_size, self.hd_sz))
-            hd = self.relu(self.dense_fc_1(self.drop(h[:, 0])))
+            rnn_out, h = self.rnn(input, h)
+            hd = self.relu(self.dense_fc_1(self.drop(rnn_out[:, 0])))
             output = self.dense_output(self.drop(hd))
             type = torch.argmax(output[:, :8], dim=1).float()
             params = F.relu(self.mdn.sample(output))
@@ -140,14 +139,12 @@ class ImitateJoint(nn.Module):
     def loss_function(self, outputs, labels, program_len):
         # remove start token from label
         labels = labels[:, 1:, :]
-
         type_loss = F.cross_entropy(outputs[:, :, :8].permute(0, 2, 1), labels[:, :, 0].long())
         param_loss = 0
-        # loss = 0
         for i in range(program_len + 1):
             param_loss += self.mdn.loss(outputs[:, i], labels[:, i, 1:]).mean()
         # scaling factor chosen to make param_loss and type_loss about equal
-        param_loss *= 0.02
+        # param_loss *= 0.00
         return param_loss + type_loss
 
 
