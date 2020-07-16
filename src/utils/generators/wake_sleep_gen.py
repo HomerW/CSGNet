@@ -7,8 +7,7 @@ from torchvision.utils import save_image
 import numpy as np
 from src.Models.models import ParseModelOutput
 from src.utils.train_utils import validity
-
-device = torch.device("cuda")
+from globals import device
 
 class WakeSleepGen:
 

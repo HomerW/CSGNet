@@ -26,8 +26,7 @@ from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
 from itertools import product
-
-device = torch.device("cuda")
+from globals import device
 
 config = read_config.Config("config_synthetic.yml")
 

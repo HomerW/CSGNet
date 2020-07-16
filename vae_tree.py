@@ -2,8 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
-
-device = torch.device("cuda")
+from globals import device
 
 class MLP(nn.Module):
     def __init__(self, ind, hdim1, hdim2, odim):

@@ -11,6 +11,7 @@ from ws_infer import infer_programs
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
 from src.utils.generators.shapenet_generater import Generator
+from globals import device
 
 class FIDModel(nn.Module):
     def __init__(self):
@@ -39,7 +40,6 @@ class FIDModel(nn.Module):
         return F.cross_entropy(logits, labels)
 
 if __name__ == '__main__':
-    device = torch.device("cuda")
     inference_train_size = 10000
     inference_test_size = 3000
     vocab_size = 400

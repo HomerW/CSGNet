@@ -9,8 +9,7 @@ from torch.autograd.variable import Variable
 from ..utils.generators.mixed_len_generator import Parser, \
     SimulateStack
 from typing import List
-
-device = torch.device("cuda")
+from globals import device
 
 class Encoder(nn.Module):
     def __init__(self, dropout=0.2):

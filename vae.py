@@ -15,8 +15,7 @@ from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
-
-device = torch.device("cuda")
+from globals import device
 
 class VAE(nn.Module):
     def __init__(self, hidden_dim, latent_dim, vocab_size):

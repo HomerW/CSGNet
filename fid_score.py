@@ -42,8 +42,7 @@ except ImportError:
 from fid_model import FIDModel
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
 from src.utils.generators.shapenet_generater import Generator
-
-device = torch.device("cuda")
+from globals import device
 
 def get_activations(generator, model, batch_size=50, dims=32, verbose=False):
     """Calculates the activations of the pool_3 layer for all images.

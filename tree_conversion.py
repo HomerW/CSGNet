@@ -1,6 +1,5 @@
 import torch
-
-device = torch.device("cuda")
+from globals import device
 
 def label_to_tree(label):
     stack = []

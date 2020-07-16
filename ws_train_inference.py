@@ -14,33 +14,27 @@ from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, beams_parser, validity, image_from_expressions, stack_from_expressions
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from src.utils.refine import optimize_expression
 import os
 import json
 import sys
-from src.utils.generators.shapenet_generater import Generator
-from ws_infer import infer_programs
 from globals import device
 
 inference_train_size = 10000
 inference_test_size = 3000
-# inference_train_size = 500
-# inference_test_size = 100
 vocab_size = 400
+generator_hidden_dim = 256
+generator_latent_dim = 20
 max_len = 13
 
 """
 Trains CSGNet to convergence on samples from generator network
 TODO: train to convergence and not number of epochs
 """
-def train_inference(inference_net, iter):
+def train_inference(inference_net, path):
     config = read_config.Config("config_synthetic.yml")
 
-    generator = WakeSleepGen(f"wake_sleep_data/inference/{iter}/labels/labels.pt",
-                             f"wake_sleep_data/inference/{iter}/labels/val/labels.pt",
+    generator = WakeSleepGen(f"{path}/labels.pt",
+                             f"{path}/val/labels.pt",
                              batch_size=config.batch_size,
                              train_size=inference_train_size,
                              test_size=inference_test_size,
@@ -159,73 +153,3 @@ def train_inference(inference_net, iter):
         print(f"CORRECT PROGRAMS: {len(generator.correct_programs)}")
 
         del test_losses, test_outputs
-
-
-"""
-Get initial pretrained CSGNet inference network
-"""
-def get_csgnet():
-    config = read_config.Config("config_synthetic.yml")
-
-    # Encoder
-    encoder_net = Encoder(config.encoder_drop)
-    encoder_net = encoder_net.to(device)
-
-    # Load the terminals symbols of the grammar
-    with open("terminals.txt", "r") as file:
-        unique_draw = file.readlines()
-    for index, e in enumerate(unique_draw):
-        unique_draw[index] = e[0:-1]
-
-    imitate_net = ImitateJoint(
-        hd_sz=config.hidden_size,
-        input_size=config.input_size,
-        encoder=encoder_net,
-        mode=config.mode,
-        num_draws=len(unique_draw),
-        canvas_shape=config.canvas_shape)
-    imitate_net = imitate_net.to(device)
-
-    print("pre loading model")
-    pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
-    imitate_net_dict = imitate_net.state_dict()
-    imitate_pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in imitate_net_dict
-    }
-    imitate_net_dict.update(imitate_pretrained_dict)
-    imitate_net.load_state_dict(imitate_net_dict)
-
-    for param in imitate_net.parameters():
-        param.requires_grad = True
-
-    for param in encoder_net.parameters():
-        param.requires_grad = True
-
-    return (encoder_net, imitate_net)
-
-"""
-Runs the wake-sleep algorithm
-"""
-def wake_sleep(iterations):
-    encoder_net, imitate_net = get_csgnet()
-
-    # print("pre loading model")
-    # pretrained_dict = torch.load("trained_models/imitate-17.pth", map_location=device)
-    # imitate_net_dict = imitate_net.state_dict()
-    # imitate_pretrained_dict = {
-    #     k: v
-    #     for k, v in pretrained_dict.items() if k in imitate_net_dict
-    # }
-    # imitate_net_dict.update(imitate_pretrained_dict)
-    # imitate_net.load_state_dict(imitate_net_dict)
-
-    for i in range(iterations):
-        print(f"WAKE SLEEP ITERATION {i}")
-        if not i == 0: # already inferred initial cad programs using pretrained model
-            infer_programs((encoder_net, imitate_net), i)
-        train_inference((encoder_net, imitate_net), i)
-
-        torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
-
-wake_sleep(50)

@@ -2,8 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
-
-device = torch.device("cuda")
+from globals import device
 
 # VAE for trees represented as dicts with "value", "left", and "right" keys
 class VAE(nn.Module):
@@ -15,29 +14,32 @@ class VAE(nn.Module):
         self.vocab_size = vocab_size
         self.max_len = max_len
 
+        self.relu = torch.nn.LeakyReLU()
+
         # encoding
         self.embed = nn.Embedding(vocab_size, hidden_dim)
-        self.parent = nn.Linear(3*hidden_dim, hidden_dim)
+        self.parent = nn.Linear(3*hidden_dim, hidden_dim) # maybe make this different depending on the operator or a mlp
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
 
         # decoding
-        self.nodetype = nn.Linear(latent_dim, 1) # classifies nodes as leaf or internal
-        self.decode_leaf = nn.Linear(latent_dim, vocab_size)
-        self.decode_parent = nn.Linear(latent_dim, 2*latent_dim+vocab_size)
+        self.nodetype = nn.Linear(latent_dim, vocab_size)
+        self.decode_union = nn.Linear(latent_dim, 2*latent_dim)
+        self.decode_intersect = nn.Linear(latent_dim, 2*latent_dim)
+        self.decode_subtract = nn.Linear(latent_dim, 2*latent_dim)
 
     def encode(self, tree):
         def traverse(node):
             # leaf
             if node["right"] is None and node["left"] is None:
-                return self.embed(node["value"])
+                return self.relu(self.embed(node["value"]))
             # internal
             else:
                 lchild = traverse(node["left"])
                 rchild = traverse(node["right"])
-                par = self.embed(node["value"])
+                par = self.relu(self.embed(node["value"]))
                 input = torch.cat([par, lchild, rchild], 0)
-                return self.parent(input)
+                return self.relu(self.parent(input))
 
         h = traverse(tree)
         return self.encode_mu(h), self.encode_logvar(h)
@@ -53,25 +55,41 @@ class VAE(nn.Module):
         def traverse_train(node, code):
             # leaf
             if node["right"] is None and node["left"] is None:
-                return {"value": self.decode_leaf(code), "left": None, "right": None}, [self.nodetype(code)]
+                return {"value": self.nodetype(code), "left": None, "right": None}
             # internal
             else:
-                par_out = self.decode_parent(code)
-                lchild, ltype = traverse_train(node["left"], par_out[:self.latent_dim])
-                rchild, rtype = traverse_train(node["right"], par_out[self.latent_dim:2*self.latent_dim])
-                return {"value": par_out[2*self.latent_dim:], "left": lchild, "right": rchild}, [self.nodetype(code)] + ltype + rtype
+                if node["value"] == 396:
+                    par_out = self.decode_union(code)
+                elif node["value"] == 397:
+                    par_out = self.decode_intersect(code)
+                elif node["value"] == 398:
+                    par_out = self.decode_subtract(code)
+                else:
+                    assert(False)
+                lchild = traverse_train(node["left"], par_out[:self.latent_dim])
+                rchild = traverse_train(node["right"], par_out[self.latent_dim:])
+                return {"value": self.nodetype(code), "left": lchild, "right": rchild}
 
         # returns decoded tree given just a latent code at test time
         def traverse_test(code, max_depth):
+            type = self.nodetype(code)
+            token = torch.argmax(type)
             # leaf
-            if self.nodetype(code) < 0 or max_depth == 1:
-                return {"value": self.decode_leaf(code), "left": None, "right": None}
+            if token < 396 or max_depth == 1:
+                return {"value": type, "left": None, "right": None}
             # internal
             else:
-                par_out = self.decode_parent(code)
+                if token == 396:
+                    par_out = self.decode_union(code)
+                elif token == 397:
+                    par_out = self.decode_intersect(code)
+                elif token == 398:
+                    par_out = self.decode_subtract(code)
+                else:
+                    assert(False)
                 lchild = traverse_test(par_out[:self.latent_dim], max_depth - 1)
-                rchild = traverse_test(par_out[self.latent_dim:2*self.latent_dim], max_depth - 1)
-                return {"value": par_out[2*self.latent_dim:], "left": lchild, "right": rchild}
+                rchild = traverse_test(par_out[self.latent_dim:], max_depth - 1)
+                return {"value": type, "left": lchild, "right": rchild}
 
         if tree is not None:
             return traverse_train(tree, z)
@@ -86,23 +104,20 @@ class VAE(nn.Module):
         return self.decode(z, x), mu, logvar
 
     # Reconstruction + KL divergence losses
-    def loss_function(self, decoder_out, x, mu, logvar):
+    def loss_function(self, recon_x, x, mu, logvar):
         # returns flattened tree and target node types
         def flatten(node):
             if node["right"] is None and node["left"] is None:
-                return [node["value"]], [torch.tensor([0])]
+                return [node["value"]]
             else:
-                lchild, ltype = flatten(node["left"])
-                rchild, rtype = flatten(node["right"])
-                return [node["value"]] + lchild + rchild, [torch.tensor([1])] + ltype + rtype
+                lchild = flatten(node["left"])
+                rchild = flatten(node["right"])
+                return [node["value"]] + lchild + rchild
 
-        recon_x, type_list = decoder_out
-        flat_x, target_type_list = flatten(x)
-        flat_recon_x, _ = flatten(recon_x)
+        flat_x = flatten(x)
+        flat_recon_x = flatten(recon_x)
 
-        CE = F.cross_entropy(torch.stack(flat_recon_x), torch.stack(flat_x))
-        # loss from predicting node type
-        type_loss = F.binary_cross_entropy_with_logits(torch.stack(type_list), torch.stack(target_type_list).float().to(device))
+        CE = F.cross_entropy(torch.stack(flat_recon_x), torch.stack(flat_x), reduction='sum')
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -110,7 +125,4 @@ class VAE(nn.Module):
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-        CE *= .1
-        # print(CE/type_loss)
-        # probably should rescale these componenents
-        return CE + type_loss + KLD
+        return CE + KLD
