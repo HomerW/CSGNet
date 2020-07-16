@@ -350,5 +350,5 @@ def wake_sleep(iterations):
         # torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
         # torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
-# wake_sleep(1)
-load_generate(0)
+wake_sleep(1)
+# load_generate(0)

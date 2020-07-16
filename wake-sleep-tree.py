@@ -175,7 +175,7 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for epoch in range(0):
+    for epoch in range(10000000):
         train_loss = 0
         batch_loss = 0
         np.random.shuffle(trees)
@@ -200,6 +200,7 @@ def train_generator(generator_net, iter):
             latent = torch.randn(generator_latent_dim).to(device)
             sampled_tree = generator_net.decode(latent)
             sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
+            print(sampled_label)
             sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
             test_sample[i] = sampled_label.cpu().numpy()
         os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/"), exist_ok=True)
@@ -218,7 +219,7 @@ def train_generator(generator_net, iter):
         latent = torch.randn(generator_latent_dim).to(device)
         sampled_tree = generator_net.decode(latent)
         sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
-        print(len(sampled_label))
+        # print(sampled_label)
         sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
         train_sample[i] = sampled_label.cpu().numpy()
     test_sample = np.zeros((inference_test_size, max_len))
@@ -290,15 +291,15 @@ def wake_sleep(iterations):
     encoder_net, imitate_net = get_csgnet()
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size, max_len).to(device)
 
-    print("pre loading model")
-    pretrained_dict = torch.load("trained_models_tree/generator-0.pth", map_location=device)
-    generator_net_dict = generator_net.state_dict()
-    generator_net_pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in generator_net_dict
-    }
-    generator_net_dict.update(generator_net_pretrained_dict)
-    generator_net.load_state_dict(generator_net_dict)
+    # print("pre loading model")
+    # pretrained_dict = torch.load("trained_models_tree/generator-0.pth", map_location=device)
+    # generator_net_dict = generator_net.state_dict()
+    # generator_net_pretrained_dict = {
+    #     k: v
+    #     for k, v in pretrained_dict.items() if k in generator_net_dict
+    # }
+    # generator_net_dict.update(generator_net_pretrained_dict)
+    # generator_net.load_state_dict(generator_net_dict)
 
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")

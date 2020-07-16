@@ -78,7 +78,7 @@ class VAE(nn.Module):
         else:
             # depth of 4 is enough to generate max_len=13 programs
             # todo: don't hardcode this
-            return traverse_test(z, 20)
+            return traverse_test(z, 5)
 
     def forward(self, x):
         mu, logvar = self.encode(x)
@@ -110,5 +110,7 @@ class VAE(nn.Module):
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
+        CE *= .1
+        # print(CE/type_loss)
         # probably should rescale these componenents
         return CE + type_loss + KLD

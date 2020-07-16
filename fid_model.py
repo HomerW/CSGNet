@@ -10,6 +10,7 @@ from tree_conversion import label_to_tree, tree_to_label
 from ws_infer import infer_programs
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
+from src.utils.generators.shapenet_generater import Generator
 
 class FIDModel(nn.Module):
     def __init__(self):
@@ -88,24 +89,33 @@ if __name__ == '__main__':
             sub_batches.append(torch.from_numpy(next(gen[k])[0][-1, :, 0:1, :, :]).to(device))
         return torch.cat(sub_batches)
 
-    real_gen = WakeSleepGen(f"wake_sleep_data/best_labels_full/labels.pt",
-                            f"wake_sleep_data/best_labels_full/val/labels.pt",
-                            batch_size=real_batch_size,
-                            train_size=inference_train_size,
-                            test_size=inference_test_size)
-    real_gen_train = real_gen.get_train_data()
-    real_gen_test = real_gen.get_test_data()
+    # real_gen = WakeSleepGen(f"wake_sleep_data/best_labels_full/labels.pt",
+    #                         f"wake_sleep_data/best_labels_full/val/labels.pt",
+    #                         batch_size=real_batch_size,
+    #                         train_size=inference_train_size,
+    #                         test_size=inference_test_size)
+    # real_gen_train = real_gen.get_train_data()
+    # real_gen_test = real_gen.get_test_data()
+    cad_generator = Generator()
+    real_gen_train = cad_generator.train_gen(
+        batch_size=real_batch_size,
+        path="data/cad/cad.h5",
+        if_augment=False)
+    real_gen_test = cad_generator.val_gen(
+        batch_size=real_batch_size,
+        path="data/cad/cad.h5",
+        if_augment=False)
 
     fake_batch_size = (batch_size // 3) // 2
-    fake_tree_gen = WakeSleepGen(f"wake_sleep_data_tree/generator/0/labels.pt",
-                                 f"wake_sleep_data_tree/generator/0/val/labels.pt",
+    fake_tree_gen = WakeSleepGen(f"wake_sleep_data_tree/best_tree_labels/labels.pt",
+                                 f"wake_sleep_data_tree/best_tree_labels/val/labels.pt",
                                  batch_size=fake_batch_size,
                                  train_size=inference_train_size,
                                  test_size=inference_test_size)
     tree_gen_train = fake_tree_gen.get_train_data()
     tree_gen_test = fake_tree_gen.get_test_data()
-    fake_seq_gen = WakeSleepGen(f"wake_sleep_data/generator/0/labels.pt",
-                                 f"wake_sleep_data/generator/0/val/labels.pt",
+    fake_seq_gen = WakeSleepGen(f"wake_sleep_data/best_sequence_labels/labels.pt",
+                                 f"wake_sleep_data/best_sequence_labels/val/labels.pt",
                                  batch_size=fake_batch_size,
                                  train_size=inference_train_size,
                                  test_size=inference_test_size)
@@ -123,7 +133,7 @@ if __name__ == '__main__':
         train_loss = 0
         for batch_idx in range(inference_train_size // batch_size):
             optimizer.zero_grad()
-            real_batch = next(real_gen_train)[0][-1, :, 0:1, :, :].to(device)
+            real_batch = torch.from_numpy(next(real_gen_train)[-1, :, 0:1, :, :]).to(device)
             syn_batch = get_syn_batch(syn_gen_train)
             tree_batch = next(tree_gen_train)[0][-1, :, 0:1, :, :].to(device)
             seq_batch = next(seq_gen_train)[0][-1, :, 0:1, :, :].to(device)
@@ -139,10 +149,10 @@ if __name__ == '__main__':
         test_loss = 0
         for batch_idx in range(inference_test_size // batch_size):
             with torch.no_grad():
-                real_batch = next(real_gen_test)[0][-1, :, 0:1, :, :].to(device)
+                real_batch = torch.from_numpy(next(real_gen_test)[-1, :, 0:1, :, :]).to(device)
                 syn_batch = get_syn_batch(syn_gen_test)
-                tree_batch = next(tree_gen_train)[0][-1, :, 0:1, :, :].to(device)
-                seq_batch = next(seq_gen_train)[0][-1, :, 0:1, :, :].to(device)
+                tree_batch = next(tree_gen_test)[0][-1, :, 0:1, :, :].to(device)
+                seq_batch = next(seq_gen_test)[0][-1, :, 0:1, :, :].to(device)
                 # each batch is 1/3 synthetic, 1/3 real inferred programs, 1/3 fake generated programs
                 batch = torch.cat([real_batch, syn_batch, tree_batch, seq_batch])
                 logits = model(batch)
@@ -150,4 +160,4 @@ if __name__ == '__main__':
                 test_loss += float(loss)
         print(f"average test loss {epoch}: {test_loss / (inference_test_size // batch_size)}")
 
-    torch.save(model.state_dict(), f"trained_models/fid-model.pth")
+    torch.save(model.state_dict(), f"trained_models/fid-model-real.pth")
