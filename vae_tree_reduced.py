@@ -59,11 +59,11 @@ class VAE(nn.Module):
             # internal
             else:
                 if node["value"] == 396:
-                    par_out = self.decode_union(code)
+                    par_out = self.relu(self.decode_union(code))
                 elif node["value"] == 397:
-                    par_out = self.decode_intersect(code)
+                    par_out = self.relu(self.decode_intersect(code))
                 elif node["value"] == 398:
-                    par_out = self.decode_subtract(code)
+                    par_out = self.relu(self.decode_subtract(code))
                 else:
                     assert(False)
                 lchild = traverse_train(node["left"], par_out[:self.latent_dim])
@@ -80,11 +80,11 @@ class VAE(nn.Module):
             # internal
             else:
                 if token == 396:
-                    par_out = self.decode_union(code)
+                    par_out = self.relu(self.decode_union(code))
                 elif token == 397:
-                    par_out = self.decode_intersect(code)
+                    par_out = self.relu(self.decode_intersect(code))
                 elif token == 398:
-                    par_out = self.decode_subtract(code)
+                    par_out = self.relu(self.decode_subtract(code))
                 else:
                     assert(False)
                 lchild = traverse_test(par_out[:self.latent_dim], max_depth - 1)
