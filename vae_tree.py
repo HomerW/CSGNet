@@ -33,9 +33,9 @@ class VAE(nn.Module):
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
 
         # decoding
-        self.nodetype = MLP(latent_dim, hidden_dim, hidden_dim, 1) # classifies nodes as leaf or internal
+        self.node_type = MLP(latent_dim, hidden_dim, hidden_dim, 1) # classifies nodes as leaf or internal
         self.decode_leaf = MLP(latent_dim, hidden_dim, hidden_dim, vocab_size)
-        self.decode_parent = MLP(latent_dim, hidden_dim, hidden_dim, 2*latent_dim+vocab_size)
+        self.decode_internal = MLP(latent_dim, hidden_dim, hidden_dim, 2*latent_dim+vocab_size)
 
     def encode(self, tree):
         def traverse(node):
@@ -64,18 +64,18 @@ class VAE(nn.Module):
         def traverse_train(node, code):
             # leaf
             if node["right"] is None and node["left"] is None:
-                return {"value": self.decode_leaf(code), "left": None, "right": None}, [self.nodetype(code)]
+                return {"value": self.decode_leaf(code), "left": None, "right": None}, [self.node_type(code)]
             # internal
             else:
                 par_out = self.decode_parent(code)
                 lchild, ltype = traverse_train(node["left"], par_out[:self.latent_dim])
                 rchild, rtype = traverse_train(node["right"], par_out[self.latent_dim:2*self.latent_dim])
-                return {"value": par_out[2*self.latent_dim:], "left": lchild, "right": rchild}, [self.nodetype(code)] + ltype + rtype
+                return {"value": par_out[2*self.latent_dim:], "left": lchild, "right": rchild}, [self.node_type(code)] + ltype + rtype
 
         # returns decoded tree given just a latent code at test time
         def traverse_test(code, max_depth):
             # leaf
-            if self.nodetype(code) < 0 or max_depth == 1:
+            if self.node_type(code) < 0 or max_depth == 1:
                 return {"value": self.decode_leaf(code), "left": None, "right": None}
             # internal
             else:

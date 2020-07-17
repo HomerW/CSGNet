@@ -32,7 +32,7 @@ inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
 generator_hidden_dim = 256
-generator_latent_dim = 20
+generator_latent_dim = 256
 max_len = 13
 
 """

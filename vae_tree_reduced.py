@@ -4,6 +4,18 @@ from torch.nn import functional as F
 import numpy as np
 from globals import device
 
+class MLP(nn.Module):
+    def __init__(self, ind, hdim, odim):
+        super(MLP, self).__init__()
+        self.l1 = nn.Linear(ind, hdim)
+        self.l2 = nn.Linear(hdim, hdim)
+        self.l3 = nn.Linear(hdim, odim)
+
+    def forward(self, x):
+        x = torch.tanh(self.l1(x))
+        x = torch.tanh(self.l2(x))
+        return self.l3(x)
+
 # VAE for trees represented as dicts with "value", "left", and "right" keys
 class VAE(nn.Module):
     def __init__(self, hidden_dim, latent_dim, vocab_size, max_len):
@@ -18,15 +30,15 @@ class VAE(nn.Module):
 
         # encoding
         self.embed = nn.Embedding(self.vocab_size, hidden_dim)
-        self.parent = nn.Linear(3*hidden_dim, hidden_dim) # maybe make this different depending on the operator or a mlp
-        self.encode_mu = nn.Linear(hidden_dim, latent_dim)
-        self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
+        self.parent = MLP(3*hidden_dim, hidden_dim, hidden_dim)
+        self.encode_mu = MLP(hidden_dim, hidden_dim, latent_dim)
+        self.encode_logvar = MLP(hidden_dim, hidden_dim, latent_dim)
 
         # decoding
-        self.nodetype = nn.Linear(latent_dim, self.vocab_size)
-        self.decode_union = nn.Linear(latent_dim, 2*latent_dim)
-        self.decode_intersect = nn.Linear(latent_dim, 2*latent_dim)
-        self.decode_subtract = nn.Linear(latent_dim, 2*latent_dim)
+        self.nodetype = MLP(latent_dim, hidden_dim, self.vocab_size)
+        self.decode_union = MLP(latent_dim, hidden_dim, 2*latent_dim)
+        self.decode_intersect = MLP(latent_dim, hidden_dim, 2*latent_dim)
+        self.decode_subtract = MLP(latent_dim, hidden_dim, 2*latent_dim)
 
     def encode(self, tree):
         def traverse(node):
