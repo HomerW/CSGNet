@@ -48,9 +48,10 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for epoch in range(10000000):
+    for epoch in range(10):
         train_loss = 0
         batch_loss = 0
+        acc = 0
         np.random.shuffle(trees)
         for i, t in enumerate(trees):
             optimizer.zero_grad()
@@ -59,11 +60,17 @@ def train_generator(generator_net, iter):
             loss.backward()
             batch_loss += float(loss)
             optimizer.step()
+
+            label = torch.argmax(tree_to_label(decoder_out), dim=1)
+            acc += (label == tree_to_label(t)).float().sum() / len(label)
             if (i + 1) % 100 == 0:
                 print(f"{i+1}/{len(trees)}")
                 print(batch_loss / 100)
+                print(f"acc: {acc / (i+1)}")
                 train_loss += batch_loss / 100
                 batch_loss = 0
+
+
 
             del decoder_out, mu, logvar
 
@@ -71,13 +78,16 @@ def train_generator(generator_net, iter):
 
         with torch.no_grad():
             test_sample = np.zeros((inference_test_size, max_len))
+            total_len = 0
             for i in range(inference_test_size):
                 latent = torch.randn(generator_latent_dim).to(device)
                 sampled_tree = generator_net.decode(latent)
                 sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
+                total_len += len(sampled_label)
                 # print(sampled_label)
                 sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
                 test_sample[i] = sampled_label.cpu().numpy()
+            print(f"AVERAGE SAMPLE LENGTH: {total_len/inference_test_size}")
             os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/"), exist_ok=True)
             os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/val/"), exist_ok=True)
             torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/labels.pt")
@@ -88,22 +98,22 @@ def train_generator(generator_net, iter):
                                                   32)
             print('FID: ', fid_value)
 
-
-    train_sample = np.zeros((inference_train_size, max_len))
-    for i in range(inference_train_size):
-        latent = torch.randn(generator_latent_dim).to(device)
-        sampled_tree = generator_net.decode(latent)
-        sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
-        # print(sampled_label)
-        sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
-        train_sample[i] = sampled_label.cpu().numpy()
-    test_sample = np.zeros((inference_test_size, max_len))
-    for i in range(inference_test_size):
-        latent = torch.randn(generator_latent_dim).to(device)
-        sampled_tree = generator_net.decode(latent)
-        sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
-        sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
-        test_sample[i] = sampled_label.cpu().numpy()
+    with torch.no_grad():
+        train_sample = np.zeros((inference_train_size, max_len))
+        for i in range(inference_train_size):
+            latent = torch.randn(generator_latent_dim).to(device)
+            sampled_tree = generator_net.decode(latent)
+            sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
+            # print(sampled_label)
+            sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
+            train_sample[i] = sampled_label.cpu().numpy()
+        test_sample = np.zeros((inference_test_size, max_len))
+        for i in range(inference_test_size):
+            latent = torch.randn(generator_latent_dim).to(device)
+            sampled_tree = generator_net.decode(latent)
+            sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
+            sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
+            test_sample[i] = sampled_label.cpu().numpy()
 
     os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/{iter}/"), exist_ok=True)
     torch.save(train_sample, f"wake_sleep_data_tree/generator/{iter}/labels.pt")
@@ -164,7 +174,7 @@ Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
     imitate_net = get_csgnet()
-    generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size, max_len).to(device)
+    generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size-1, max_len).to(device)
 
     # print("pre loading model")
     # pretrained_dict = torch.load("trained_models_tree/generator-0.pth", map_location=device)
@@ -184,6 +194,6 @@ def wake_sleep(iterations):
         # train_inference(imitate_net, i)
 
         # torch.save(imitate_net.state_dict(), f"trained_models_tree/imitate-{i}.pth")
-        #torch.save(generator_net.state_dict(), f"trained_models_tree/generator-{i}.pth")
+        torch.save(generator_net.state_dict(), f"trained_models_tree/generator-{i}.pth")
 
 wake_sleep(1)

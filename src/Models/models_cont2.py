@@ -98,7 +98,8 @@ class ImitateJoint(nn.Module):
         # remove stop token for input to decoder
         input_op = input_op[:, :-1, :]
 
-        input_params = self.dense_params(input_op[:, :, 1:])
+        #input_params = self.dense_params(input_op[:, :, 1:])
+        input_params = torch.zeros((batch_size, input_op.shape[1], 64))
         input_type = self.embedding(input_op[:, :, 0].long())
         input_op_rnn = torch.cat([input_type, input_params], dim=2)
         x_f = x_f.repeat(1, program_len+1, 1)
@@ -119,7 +120,8 @@ class ImitateJoint(nn.Module):
         for timestep in range(0, program_len + 1):
             # X_f is always input to the network at every time step
             # along with previous predicted label
-            input_params = self.dense_params(last_output[:, 1:])
+            # input_params = self.dense_params(last_output[:, 1:])
+            input_params = torch.zeros((batch_size, 64))
             input_type = self.embedding(last_output[:, 0].long())
             # (timesteps, batch, features)
             input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
@@ -138,11 +140,11 @@ class ImitateJoint(nn.Module):
         labels = labels[:, 1:, :]
 
         type_loss = F.cross_entropy(outputs[:, :, :8].permute(0, 2, 1), labels[:, :, 0].long())
-        param_loss = F.mse_loss(outputs[:, :, 8:], labels[:, :, 1:])
+        # param_loss = F.mse_loss(outputs[:, :, 8:], labels[:, :, 1:])
         # scaling factor chosen to make param_loss and type_loss about equal
         # param_loss *= 0.01
         # print(param_loss/type_loss)
-        return param_loss + type_loss
+        return 0*param_loss + type_loss
 
 
 class ParseModelOutput:

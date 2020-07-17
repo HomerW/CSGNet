@@ -17,13 +17,13 @@ class VAE(nn.Module):
         self.relu = torch.nn.LeakyReLU()
 
         # encoding
-        self.embed = nn.Embedding(vocab_size, hidden_dim)
+        self.embed = nn.Embedding(self.vocab_size, hidden_dim)
         self.parent = nn.Linear(3*hidden_dim, hidden_dim) # maybe make this different depending on the operator or a mlp
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
 
         # decoding
-        self.nodetype = nn.Linear(latent_dim, vocab_size)
+        self.nodetype = nn.Linear(latent_dim, self.vocab_size)
         self.decode_union = nn.Linear(latent_dim, 2*latent_dim)
         self.decode_intersect = nn.Linear(latent_dim, 2*latent_dim)
         self.decode_subtract = nn.Linear(latent_dim, 2*latent_dim)
@@ -116,6 +116,8 @@ class VAE(nn.Module):
 
         flat_x = flatten(x)
         flat_recon_x = flatten(recon_x)
+        # print(torch.stack(flat_x))
+        # print(torch.argmax(torch.stack(flat_recon_x), dim=1))
 
         CE = F.cross_entropy(torch.stack(flat_recon_x), torch.stack(flat_x), reduction='sum')
 
@@ -125,4 +127,6 @@ class VAE(nn.Module):
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
+        # KLD *= .01
+        # print(CE/KLD)
         return CE + KLD

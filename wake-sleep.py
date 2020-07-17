@@ -158,8 +158,10 @@ def get_csgnet():
     return imitate_net
 
 def load_generate(iter):
-    generator = WakeSleepGen(f"wake_sleep_data_tree/generator/{iter}/labels.pt",
-                             f"wake_sleep_data_tree/generator/{iter}/val/labels.pt")
+    generator = WakeSleepGen(f"wake_sleep_data_tree/generator/tmp/labels.pt",
+                             f"wake_sleep_data_tree/generator/tmp/val/labels.pt",
+                             train_size=3000,
+                             test_size=3000,)
 
     train_gen = generator.get_train_data()
 
@@ -223,5 +225,5 @@ def wake_sleep(iterations):
         # torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
         # torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
-wake_sleep(1)
-# load_generate(0)
+# wake_sleep(1)
+load_generate(0)
