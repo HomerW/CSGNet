@@ -53,7 +53,7 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
-dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
+# dataset_sizes = {k: [x // 10 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -170,6 +170,7 @@ for epoch in range(config.epochs):
 
     imitate_net.eval()
     loss = Variable(torch.zeros(1)).to(device)
+    acc = 0
     metrics = {"cos": 0, "iou": 0, "cd": 0}
     IOU = 0
     COS = 0
@@ -186,6 +187,8 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).to(device)
                 outputs = imitate_net.test(data, labels_cont, k)
                 loss += imitate_net.loss_function(outputs, labels_cont, k) / types_prog
+                acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
+                       / (len(labels_cont) * (k+1)) / types_prog / config.num_traj / (config.test_size // config.batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     outputs, if_just_expressions=False, if_pred_images=True)
                 correct_programs += len(correct_prog)
@@ -209,9 +212,9 @@ for epoch in range(config.epochs):
                                              (config.batch_size))
 
     # reduce_plat.reduce_on_plateu(metrics["cd"])
-    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
+    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}, test_acc: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
-                                      metrics["iou"], metrics["cd"], test_loss,))
+                                      metrics["iou"], metrics["cd"], test_loss, acc))
     print(f"CORRECT PROGRAMS: {correct_programs}")
     print(f"PREDICTED PROGRAMS: {pred_programs}")
     print(f"RATIO: {correct_programs/pred_programs}")

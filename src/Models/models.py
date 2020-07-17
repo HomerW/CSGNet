@@ -388,6 +388,7 @@ class ParseModelOutput:
             return expressions
         stacks = []
         for index, exp in enumerate(expressions):
+            print(exp)
             program = self.Parser.parse(exp)
             if validity(program, len(program), len(program) - 1):
                 correct_programs.append(index)
