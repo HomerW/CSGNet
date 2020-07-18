@@ -35,7 +35,7 @@ class VAE(nn.Module):
         self.encode_logvar = MLP(hidden_dim, hidden_dim, latent_dim)
 
         # decoding
-        self.nodetype = MLP(latent_dim, hidden_dim, self.vocab_size)
+        self.node_type = MLP(latent_dim, hidden_dim, self.vocab_size)
         self.decode_union = MLP(latent_dim, hidden_dim, 2*latent_dim)
         self.decode_intersect = MLP(latent_dim, hidden_dim, 2*latent_dim)
         self.decode_subtract = MLP(latent_dim, hidden_dim, 2*latent_dim)
@@ -63,11 +63,11 @@ class VAE(nn.Module):
 
     def decode(self, z, tree=None):
         # returns decoded tree and a list of predicted node types
-        # (for training nodetype classifier), teacher forces tree structure
+        # (for training node_type classifier), teacher forces tree structure
         def traverse_train(node, code):
             # leaf
             if node["right"] is None and node["left"] is None:
-                return {"value": self.nodetype(code), "left": None, "right": None}
+                return {"value": self.node_type(code), "left": None, "right": None}
             # internal
             else:
                 if node["value"] == 396:
@@ -80,12 +80,14 @@ class VAE(nn.Module):
                     assert(False)
                 lchild = traverse_train(node["left"], par_out[:self.latent_dim])
                 rchild = traverse_train(node["right"], par_out[self.latent_dim:])
-                return {"value": self.nodetype(code), "left": lchild, "right": rchild}
+                return {"value": self.node_type(code), "left": lchild, "right": rchild}
 
         # returns decoded tree given just a latent code at test time
         def traverse_test(code, max_depth):
-            type = self.nodetype(code)
+            type = self.node_type(code)
             token = torch.argmax(type)
+            if max_depth == 1:
+                print("max depth reached")
             # leaf
             if token < 396 or max_depth == 1:
                 return {"value": type, "left": None, "right": None}
@@ -108,7 +110,7 @@ class VAE(nn.Module):
         else:
             # depth of 4 is enough to generate max_len=13 programs
             # todo: don't hardcode this
-            return traverse_test(z, 5)
+            return traverse_test(z, 4)
 
     def forward(self, x):
         mu, logvar = self.encode(x)

@@ -92,7 +92,6 @@ class VAE(nn.Module):
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-        print(BCE/KLD)
         return BCE + KLD
 
     # def clean(self, prev_output, next_output, timesteps):

@@ -32,7 +32,7 @@ inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
 generator_hidden_dim = 256
-generator_latent_dim = 256
+generator_latent_dim = 20
 max_len = 13
 
 """
@@ -48,7 +48,7 @@ def train_generator(generator_net, iter):
 
     generator_net.train()
 
-    for epoch in range(10):
+    for epoch in range(100000000):
         train_loss = 0
         batch_loss = 0
         acc = 0
@@ -92,11 +92,11 @@ def train_generator(generator_net, iter):
             os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/val/"), exist_ok=True)
             torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/labels.pt")
             torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/val/labels.pt")
-            fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/tmp",
-                                                  "trained_models/fid-model.pth",
-                                                  100,
-                                                  32)
-            print('FID: ', fid_value)
+            # fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/tmp",
+            #                                       "trained_models/fid-model.pth",
+            #                                       100,
+            #                                       32)
+            # print('FID: ', fid_value)
 
     with torch.no_grad():
         train_sample = np.zeros((inference_train_size, max_len))
