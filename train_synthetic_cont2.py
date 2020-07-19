@@ -53,7 +53,7 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
-# dataset_sizes = {k: [x // 10 for x in v] for k, v in dataset_sizes.items()}
+dataset_sizes = {k: [x // 10 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
