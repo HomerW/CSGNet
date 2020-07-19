@@ -26,8 +26,6 @@ class VAE(nn.Module):
         self.vocab_size = vocab_size
         self.max_len = max_len
 
-        self.relu = torch.nn.LeakyReLU()
-
         # encoding
         self.embed = nn.Embedding(self.vocab_size, hidden_dim)
         self.parent = MLP(3*hidden_dim, hidden_dim, hidden_dim)
@@ -44,14 +42,14 @@ class VAE(nn.Module):
         def traverse(node):
             # leaf
             if node["right"] is None and node["left"] is None:
-                return self.relu(self.embed(node["value"]))
+                return torch.tanh(self.embed(node["value"]))
             # internal
             else:
                 lchild = traverse(node["left"])
                 rchild = traverse(node["right"])
-                par = self.relu(self.embed(node["value"]))
+                par = torch.tanh(self.embed(node["value"]))
                 input = torch.cat([par, lchild, rchild], 0)
-                return self.relu(self.parent(input))
+                return torch.tanh(self.parent(input))
 
         h = traverse(tree)
         return self.encode_mu(h), self.encode_logvar(h)
@@ -71,11 +69,11 @@ class VAE(nn.Module):
             # internal
             else:
                 if node["value"] == 396:
-                    par_out = self.relu(self.decode_union(code))
+                    par_out = torch.tanh(self.decode_union(code))
                 elif node["value"] == 397:
-                    par_out = self.relu(self.decode_intersect(code))
+                    par_out = torch.tanh(self.decode_intersect(code))
                 elif node["value"] == 398:
-                    par_out = self.relu(self.decode_subtract(code))
+                    par_out = torch.tanh(self.decode_subtract(code))
                 else:
                     assert(False)
                 lchild = traverse_train(node["left"], par_out[:self.latent_dim])
@@ -94,11 +92,11 @@ class VAE(nn.Module):
             # internal
             else:
                 if token == 396:
-                    par_out = self.relu(self.decode_union(code))
+                    par_out = torch.tanh(self.decode_union(code))
                 elif token == 397:
-                    par_out = self.relu(self.decode_intersect(code))
+                    par_out = torch.tanh(self.decode_intersect(code))
                 elif token == 398:
-                    par_out = self.relu(self.decode_subtract(code))
+                    par_out = torch.tanh(self.decode_subtract(code))
                 else:
                     assert(False)
                 lchild = traverse_test(par_out[:self.latent_dim], max_depth - 1)
