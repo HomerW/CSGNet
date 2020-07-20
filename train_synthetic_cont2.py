@@ -46,11 +46,11 @@ data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
 # testing examples.
 proportion = config.proportion  # proportion is in percentage. vary from [1, 100].
 dataset_sizes = {
-    # 3: [30000, 50 * proportion],
-    # 5: [110000, 500 * proportion],
-    # 7: [170000, 500 * proportion],
-    # 9: [270000, 500 * proportion],
-    # 11: [370000, 1000 * proportion],
+    3: [30000, 50 * proportion],
+    5: [110000, 500 * proportion],
+    7: [170000, 500 * proportion],
+    9: [270000, 500 * proportion],
+    11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
 dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
@@ -182,6 +182,7 @@ for epoch in range(config.epochs):
         for k in dataset_sizes.keys():
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])
+                # data_, labels = next(train_gen_objs[k])
                 labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
                 data = data_[:, :, 0:1, :, :]
                 data = Variable(torch.from_numpy(data)).to(device)

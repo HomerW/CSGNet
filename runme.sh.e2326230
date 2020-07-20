@@ -1,4 +1,0 @@
-train_cad.py:157: UserWarning: torch.nn.utils.clip_grad_norm is now deprecated in favor of torch.nn.utils.clip_grad_norm_.
-  torch.nn.utils.clip_grad_norm(imitate_net.parameters(), 10)
-train_cad.py:189: UserWarning: volatile was removed and now has no effect. Use `with torch.no_grad():` instead.
-  data = Variable(torch.from_numpy(data_), volatile=True).cuda()

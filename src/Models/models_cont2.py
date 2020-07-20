@@ -23,6 +23,7 @@ class Encoder(nn.Module):
         self.conv2 = nn.Conv2d(8, 16, 3, padding=(1, 1))
         self.conv3 = nn.Conv2d(16, 32, 3, padding=(1, 1))
         self.drop = nn.Dropout(dropout)
+        # self.drop = lambda x: x
 
     def encode(self, x):
         x = F.max_pool2d(self.drop(F.relu(self.conv1(x))), (2, 2))
@@ -66,8 +67,8 @@ class ImitateJoint(nn.Module):
         self.out_sz = output_size
 
         # Dense layer to project input ops(labels) to input of rnn (EDITED TO EMBEDDING)
-        self.emb_size = 64
-        self.param_size = 64
+        self.emb_size = 8
+        self.param_size = 256
         self.embedding = nn.Embedding(8, self.emb_size)
         self.dense_params = nn.Linear(3, self.param_size)
         self.input_op_sz = self.emb_size + self.param_size
@@ -124,6 +125,11 @@ class ImitateJoint(nn.Module):
         for timestep in range(0, program_len + 1):
             # X_f is always input to the network at every time step
             # along with previous predicted label
+
+            # round params to look like quantized training data ONLY FOR TRAINING ON SYN DATA REOMVE AFTER
+            # last_output[:, 1:3] = torch.round(last_output[:, 1:3] / 8) * 8
+            # last_output[:, 3:] = torch.round(last_output[:, 3:] / 4) * 4
+
             input_params = self.dense_params(last_output[:, 1:])
             #input_params = torch.zeros((batch_size, 64)).to(device)
             input_type = self.embedding(last_output[:, 0].long())
@@ -203,10 +209,8 @@ class ParseModelOutput:
                     expressions[j] += "$"
                 if type_labels[j][i] > 3:
                     params = F.relu(outputs[j, i, 8:])
-                    print(params)
                     params = params.cpu().numpy().reshape((-1,))
-                    params = str([int(x) for x in params])[1:-1].replace(" ", "")
-                    print(params)
+                    params = str([round(x) for x in params])[1:-1].replace(" ", "")
                     if type_labels[j][i] == 4:
                         expressions[j] += f"c({params})"
                     if type_labels[j][i] == 5:

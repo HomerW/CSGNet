@@ -44,11 +44,11 @@ data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
 # testing examples.
 proportion = config.proportion  # proportion is in percentage. vary from [1, 100].
 dataset_sizes = {
-    # 3: [30000, 50 * proportion],
-    # 5: [110000, 500 * proportion],
-    # 7: [170000, 500 * proportion],
-    # 9: [270000, 500 * proportion],
-    # 11: [370000, 1000 * proportion],
+    3: [30000, 50 * proportion],
+    5: [110000, 500 * proportion],
+    7: [170000, 500 * proportion],
+    9: [270000, 500 * proportion],
+    11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
 dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
@@ -185,8 +185,8 @@ for epoch in range(config.epochs):
                 test_outputs = imitate_net([data, one_hot_labels, k])
                 loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
                          (k + 1)) / types_prog
-                acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
-                       / (len(labels_cont) * (k+1)) / types_prog / (config.test_size // config.batch_size)
+                acc += float((torch.argmax(test_outputs, dim=2).permute(1, 0) == labels).float().sum()) \
+                       / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 test_output = imitate_net.test([data, one_hot_labels, max_len])
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_output, if_just_expressions=False, if_pred_images=True)
