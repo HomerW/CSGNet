@@ -50,7 +50,7 @@ dropout = 0.2
 encoder_drop = 0.2
 
 # Whether to schedule the learning rate or not
-lr_sch = True
+lr_sch = False
 
 # Number of epochs to wait before decaying the learning rate.
 patience = 8

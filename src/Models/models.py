@@ -133,6 +133,7 @@ class ImitateJoint(nn.Module):
                         self.dense_input_op(input_op[:, timestep, :]))
                     input_op_rnn = input_op_rnn.view(1, batch_size,
                                                      self.input_op_sz)
+                    input_op_rnn = torch.zeros((1, batch_size, self.input_op_sz))
                     input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                     h, _ = self.rnn(input, h)
                     hd = self.relu(self.dense_fc_1(self.drop(h[0])))
@@ -388,7 +389,7 @@ class ParseModelOutput:
             return expressions
         stacks = []
         for index, exp in enumerate(expressions):
-            print(exp)
+            # print(exp)
             program = self.Parser.parse(exp)
             if validity(program, len(program), len(program) - 1):
                 correct_programs.append(index)

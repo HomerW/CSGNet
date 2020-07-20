@@ -96,17 +96,18 @@ class ImitateJoint(nn.Module):
         x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
         x_f = x_f.view(batch_size, 1, self.in_sz)
 
-        # remove stop token for input to decoder
-        input_op = input_op[:, :-1, :]
-
-        # add some noise to params during training
-        input_op[:, :, 1:3] += 8*torch.randn_like(input_op[:, :, 1:3]).to(device) # location
-        input_op[:, :, 3:] += 4*torch.randn_like(input_op[:, :, 3:]).to(device) # scale
-        input_params = self.dense_params(input_op[:, :, 1:])
-
-        #input_params = torch.zeros((batch_size, input_op.shape[1], 64)).to(device)
-        input_type = self.embedding(input_op[:, :, 0].long())
-        input_op_rnn = torch.cat([input_type, input_params], dim=2)
+        # # remove stop token for input to decoder
+        # input_op = input_op[:, :-1, :]
+        #
+        # # add some noise to params during training
+        # input_op[:, :, 1:3] += 8*torch.randn_like(input_op[:, :, 1:3]).to(device) # location
+        # input_op[:, :, 3:] += 4*torch.randn_like(input_op[:, :, 3:]).to(device) # scale
+        # input_params = self.dense_params(input_op[:, :, 1:])
+        #
+        # #input_params = torch.zeros((batch_size, input_op.shape[1], 256)).to(device)
+        # input_type = self.embedding(input_op[:, :, 0].long())
+        # input_op_rnn = torch.cat([input_type, input_params], dim=2)
+        input_op_rnn = torch.zeros((batch_size, input_op.shape[1]-1, 264)).to(device)
         x_f = x_f.repeat(1, program_len+1, 1)
         input = torch.cat((self.drop(x_f), input_op_rnn), 2)
         output, h = self.rnn(input, h)
@@ -130,11 +131,12 @@ class ImitateJoint(nn.Module):
             # last_output[:, 1:3] = torch.round(last_output[:, 1:3] / 8) * 8
             # last_output[:, 3:] = torch.round(last_output[:, 3:] / 4) * 4
 
-            input_params = self.dense_params(last_output[:, 1:])
-            #input_params = torch.zeros((batch_size, 64)).to(device)
-            input_type = self.embedding(last_output[:, 0].long())
-            # (timesteps, batch, features)
-            input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
+            # input_params = self.dense_params(last_output[:, 1:])
+            # #input_params = torch.zeros((batch_size, 256)).to(device)
+            # input_type = self.embedding(last_output[:, 0].long())
+            # # (timesteps, batch, features)
+            # input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
+            input_op_rnn = torch.zeros((batch_size, 264)).to(device)
             input = torch.cat((self.drop(x_f), input_op_rnn), 1).reshape((batch_size, 1, -1))
             rnn_out, h = self.rnn(input, h)
             hd = self.relu(self.dense_fc_1(self.drop(rnn_out[:, 0])))

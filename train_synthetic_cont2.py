@@ -53,7 +53,7 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
-dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
+dataset_sizes = {k: [x // 10 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -186,7 +186,7 @@ for epoch in range(config.epochs):
                 labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
                 data = data_[:, :, 0:1, :, :]
                 data = Variable(torch.from_numpy(data)).to(device)
-                outputs = imitate_net.test(data, labels_cont, k)
+                outputs = imitate_net(data, labels_cont, k)
                 loss += imitate_net.loss_function(outputs, labels_cont, k) / types_prog
                 acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
                        / (len(labels_cont) * (k+1)) / types_prog / (config.test_size // config.batch_size)
