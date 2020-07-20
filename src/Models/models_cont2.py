@@ -98,8 +98,9 @@ class ImitateJoint(nn.Module):
         # remove stop token for input to decoder
         input_op = input_op[:, :-1, :]
 
-        # add some N(0, 2) noise to params during training
-        input_op[:, :, 1:] += 2*torch.randn_like(input_op[:, :, 1:]).to(device)
+        # add some noise to params during training
+        input_op[:, :, 1:3] += 8*torch.randn_like(input_op[:, :, 1:3]).to(device) # location
+        input_op[:, :, 3:] += 4*torch.randn_like(input_op[:, :, 3:]).to(device) # scale
         input_params = self.dense_params(input_op[:, :, 1:])
 
         #input_params = torch.zeros((batch_size, input_op.shape[1], 64)).to(device)
@@ -145,7 +146,7 @@ class ImitateJoint(nn.Module):
         type_loss = F.cross_entropy(outputs[:, :, :8].permute(0, 2, 1), labels[:, :, 0].long())
         param_loss = F.mse_loss(outputs[:, :, 8:], labels[:, :, 1:])
         # scaling factor chosen to make param_loss and type_loss about equal
-        # param_loss *= 0.01
+        param_loss *= 0.01
         # print(param_loss/type_loss)
         return type_loss + param_loss
 
@@ -202,8 +203,10 @@ class ParseModelOutput:
                     expressions[j] += "$"
                 if type_labels[j][i] > 3:
                     params = F.relu(outputs[j, i, 8:])
+                    print(params)
                     params = params.cpu().numpy().reshape((-1,))
                     params = str([int(x) for x in params])[1:-1].replace(" ", "")
+                    print(params)
                     if type_labels[j][i] == 4:
                         expressions[j] += f"c({params})"
                     if type_labels[j][i] == 5:

@@ -44,11 +44,11 @@ data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
 # testing examples.
 proportion = config.proportion  # proportion is in percentage. vary from [1, 100].
 dataset_sizes = {
-    3: [30000, 50 * proportion],
-    5: [110000, 500 * proportion],
-    7: [170000, 500 * proportion],
-    9: [270000, 500 * proportion],
-    11: [370000, 1000 * proportion],
+    # 3: [30000, 50 * proportion],
+    # 5: [110000, 500 * proportion],
+    # 7: [170000, 500 * proportion],
+    # 9: [270000, 500 * proportion],
+    # 11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
 dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
@@ -85,7 +85,7 @@ for param in imitate_net.parameters():
 for param in encoder_net.parameters():
     param.requires_grad = True
 
-max_len = max(data_labels_paths.keys())
+max_len = max(dataset_sizes.keys())
 
 optimizer = optim.Adam(
     [para for para in imitate_net.parameters() if para.requires_grad],
@@ -103,7 +103,7 @@ test_gen_objs = {}
 config.train_size = sum(dataset_sizes[k][0] for k in dataset_sizes.keys())
 config.test_size = sum(dataset_sizes[k][1] for k in dataset_sizes.keys())
 total_importance = sum(k for k in dataset_sizes.keys())
-for k in data_labels_paths.keys():
+for k in dataset_sizes.keys():
     test_batch_size = int(config.batch_size * dataset_sizes[k][1] / \
                           config.test_size)
     # Acts as a curriculum learning
@@ -133,7 +133,7 @@ for epoch in range(config.epochs):
         loss = Variable(torch.zeros(1)).cuda().data
         acc = 0
         for _ in range(config.num_traj):
-            for k in data_labels_paths.keys():
+            for k in dataset_sizes.keys():
                 data, labels = next(train_gen_objs[k])
                 data = data[:, :, 0:1, :, :]
                 one_hot_labels = prepare_input_op(labels,
@@ -145,12 +145,12 @@ for epoch in range(config.epochs):
                 outputs = imitate_net([data, one_hot_labels, k])
                 if not imitate_net.tf:
                     acc += float((torch.argmax(torch.stack(outputs), dim=2).permute(1, 0) == labels).float().sum()) \
-                           / (labels.shape[0] * labels.shape[1]) / len(data_labels_paths.keys()) / config.num_traj
+                           / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
                 else:
                     acc += float((torch.argmax(outputs, dim=2).permute(1, 0) == labels).float().sum()) \
-                           / (labels.shape[0] * labels.shape[1]) / len(data_labels_paths.keys()) / config.num_traj
+                           / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
                 loss_k = (losses_joint(outputs, labels, time_steps=k + 1) / (
-                    k + 1)) / len(data_labels_paths.keys()) / config.num_traj
+                    k + 1)) / len(dataset_sizes.keys()) / config.num_traj
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k
@@ -164,6 +164,7 @@ for epoch in range(config.epochs):
     print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
     imitate_net.eval()
     loss = Variable(torch.zeros(1)).cuda()
+    acc = 0
     metrics = {"cos": 0, "iou": 0, "cd": 0}
     IOU = 0
     COS = 0
@@ -173,7 +174,7 @@ for epoch in range(config.epochs):
     for batch_idx in range(config.test_size // (config.batch_size)):
         parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
-        for k in data_labels_paths.keys():
+        for k in dataset_sizes.keys():
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])
                 one_hot_labels = prepare_input_op(labels, len(
@@ -184,6 +185,8 @@ for epoch in range(config.epochs):
                 test_outputs = imitate_net([data, one_hot_labels, k])
                 loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
                          (k + 1)) / types_prog
+                acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
+                       / (len(labels_cont) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 test_output = imitate_net.test([data, one_hot_labels, max_len])
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_output, if_just_expressions=False, if_pred_images=True)
@@ -208,9 +211,9 @@ for epoch in range(config.epochs):
                                              (config.batch_size))
 
     reduce_plat.reduce_on_plateu(metrics["cd"])
-    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
+    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}, test_acc: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
-                                      metrics["iou"], metrics["cd"], test_loss,))
+                                      metrics["iou"], metrics["cd"], test_loss, acc))
     print(f"CORRECT PROGRAMS: {correct_programs}")
     print(f"PREDICTED PROGRAMS: {pred_programs}")
     print(f"RATIO: {correct_programs/pred_programs}")
