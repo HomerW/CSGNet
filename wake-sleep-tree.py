@@ -70,8 +70,6 @@ def train_generator(generator_net, iter):
                 train_loss += batch_loss / 100
                 batch_loss = 0
 
-
-
             del decoder_out, mu, logvar
 
         print(f"generator epoch {epoch} loss: {train_loss / (len(labels) / 100)}")

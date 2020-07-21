@@ -133,7 +133,7 @@ class ImitateJoint(nn.Module):
                         self.dense_input_op(input_op[:, timestep, :]))
                     input_op_rnn = input_op_rnn.view(1, batch_size,
                                                      self.input_op_sz)
-                    input_op_rnn = torch.zeros((1, batch_size, self.input_op_sz))
+                    input_op_rnn = torch.zeros((1, batch_size, self.input_op_sz)).cuda()
                     input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                     h, _ = self.rnn(input, h)
                     hd = self.relu(self.dense_fc_1(self.drop(h[0])))
@@ -143,6 +143,7 @@ class ImitateJoint(nn.Module):
             else:
                 # remove stop token for input to decoder
                 input_op_rnn = self.relu(self.dense_input_op(input_op))[:, :-1, :].permute(1, 0, 2)
+                input_op_rnn = torch.zeros((program_len+1, batch_size, self.input_op_sz)).cuda()
                 x_f = x_f.repeat(program_len+1, 1, 1)
                 input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                 output, h = self.rnn(input, h)
@@ -221,6 +222,8 @@ class ImitateJoint(nn.Module):
                 input_op_rnn = self.relu(self.dense_input_op(last_output))
                 input_op_rnn = input_op_rnn.view(1, batch_size,
                                                  self.input_op_sz)
+                input_op_rnn = torch.zeros((1, batch_size,
+                                                 self.input_op_sz)).cuda()
                 input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                 h, _ = self.rnn(input, h)
                 hd = self.relu(self.dense_fc_1(self.drop(h[0])))

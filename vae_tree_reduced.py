@@ -28,7 +28,9 @@ class VAE(nn.Module):
 
         # encoding
         self.embed = nn.Embedding(self.vocab_size, hidden_dim)
-        self.parent = MLP(3*hidden_dim, hidden_dim, hidden_dim)
+        self.encode_union = MLP(3*hidden_dim, hidden_dim, hidden_dim)
+        self.encode_intersect = MLP(3*hidden_dim, hidden_dim, hidden_dim)
+        self.encode_subtract = MLP(3*hidden_dim, hidden_dim, hidden_dim)
         self.encode_mu = MLP(hidden_dim, hidden_dim, latent_dim)
         self.encode_logvar = MLP(hidden_dim, hidden_dim, latent_dim)
 
@@ -49,7 +51,14 @@ class VAE(nn.Module):
                 rchild = traverse(node["right"])
                 par = torch.tanh(self.embed(node["value"]))
                 input = torch.cat([par, lchild, rchild], 0)
-                return torch.tanh(self.parent(input))
+                if node["value"] == 396:
+                    return torch.tanh(self.encode_union(input))
+                elif node["value"] == 397:
+                    return torch.tanh(self.encode_intersect(input))
+                elif node["value"] == 398:
+                    return torch.tanh(self.encode_subtract(input))
+                else:
+                    assert(False)
 
         h = traverse(tree)
         return self.encode_mu(h), self.encode_logvar(h)
@@ -84,11 +93,11 @@ class VAE(nn.Module):
         def traverse_test(code, max_depth):
             type = self.node_type(code)
             token = torch.argmax(type)
-            if max_depth == 1:
-                print("max depth reached")
             # leaf
             if token < 396 or max_depth == 1:
-                return {"value": type, "left": None, "right": None}
+                zeroed_type = type
+                zeroed_type[396:] = 0
+                return {"value": zeroed_type, "left": None, "right": None}
             # internal
             else:
                 if token == 396:
