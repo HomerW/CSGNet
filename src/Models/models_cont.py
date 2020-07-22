@@ -83,6 +83,7 @@ class ImitateJoint(nn.Module):
         self.dense_output = nn.Linear(
             in_features=self.hd_sz, out_features=self.out_sz)
         self.drop = nn.Dropout(dropout)
+        self.tf_drop = nn.Dropout(1)
         self.relu = nn.ReLU()
         self.mdn = MixtureDensityNetwork(self.out_sz, 3, 10)
 
@@ -102,7 +103,7 @@ class ImitateJoint(nn.Module):
 
         input_params = self.dense_params(input_op[:, :, 1:])
         input_type = self.embedding(input_op[:, :, 0].long())
-        input_op_rnn = torch.cat([input_type, input_params], dim=2)
+        input_op_rnn = self.relu(self.tf_drop(torch.cat([input_type, input_params], dim=2)))
         x_f = x_f.repeat(1, program_len+1, 1)
         input = torch.cat((self.drop(x_f), input_op_rnn), 2)
         output, h = self.rnn(input, h)
@@ -121,10 +122,16 @@ class ImitateJoint(nn.Module):
         for timestep in range(0, program_len + 1):
             # X_f is always input to the network at every time step
             # along with previous predicted label
+
+            # round params to look like quantized training data ONLY FOR TRAINING ON SYN DATA REOMVE AFTER
+            last_output[:, 1:3] = torch.clamp(torch.round(last_output[:, 1:3] / 8) * 8, 8, 56)
+            last_output[:, 3:] = torch.clamp(torch.round(last_output[:, 3:] / 4) * 4, 8, 32)
+
             input_params = self.dense_params(last_output[:, 1:])
             input_type = self.embedding(last_output[:, 0].long())
             # (timesteps, batch, features)
-            input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
+            # input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
+            input_op_rnn = torch.zeros((batch_size, 128)).to(device)
             input = torch.cat((self.drop(x_f), input_op_rnn), 1).reshape((batch_size, 1, -1))
             rnn_out, h = self.rnn(input, h)
             hd = self.relu(self.dense_fc_1(self.drop(rnn_out[:, 0])))
@@ -143,7 +150,7 @@ class ImitateJoint(nn.Module):
         for i in range(program_len + 1):
             param_loss += self.mdn.loss(outputs[:, i], labels[:, i, 1:]).mean()
         # scaling factor chosen to make param_loss and type_loss about equal
-        # param_loss *= 0.00
+        param_loss *= 0.01
         return param_loss + type_loss
 
 

@@ -27,6 +27,7 @@ from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
 from itertools import product
 from globals import device
+from cont import labels_to_cont
 
 config = read_config.Config("config_synthetic.yml")
 
@@ -72,7 +73,7 @@ max_len = max(data_labels_paths.keys())
 optimizer = optim.Adam(
     imitate_net.parameters(),
     weight_decay=config.weight_decay,
-    lr=config.lr)
+    lr=0.0001)
 
 reduce_plat = LearningRate(
     optimizer,
@@ -102,34 +103,6 @@ for k in data_labels_paths.keys():
         num_test_images=dataset_sizes[k][1],
         jitter_program=True)
 
-# returns (batch, timesteps, 4) continuous encoded labels
-def labels_to_cont(labels):
-    s = labels.shape
-    labels_cont = np.zeros((s[0], s[1], 4))
-
-    labels_cont[labels == 396, 0] = 0
-    labels_cont[labels == 397, 0] = 1
-    labels_cont[labels == 398, 0] = 2
-    labels_cont[labels == 399, 0] = 3
-    labels_cont[labels <= 90, 0] = 4
-    labels_cont[((labels > 90) & (labels <= 259)), 0] = 5
-    labels_cont[((labels > 259) & (labels < 396)), 0] = 6
-
-    for i in range(s[0]):
-        for j in range(s[1]):
-            if labels[i][j] < 396:
-                str = generator.unique_draw[labels[i][j]]
-                sep = str.split(",")
-                labels_cont[i][j][1] = int(sep[0][2:])
-                labels_cont[i][j][2] = int(sep[1])
-                labels_cont[i][j][3] = int(sep[2][:-1])
-
-    # start token
-    labels_cont = np.pad(labels_cont, ((0, 0), (1, 0), (0, 0)))
-    labels_cont[:, 0, 0] = 7
-
-    return labels_cont
-
 prev_test_loss = 1e20
 prev_test_cd = 1e20
 prev_test_iou = 0
@@ -148,7 +121,7 @@ for epoch in range(config.epochs):
         for _ in range(config.num_traj):
             for k in data_labels_paths.keys():
                 data, labels = next(train_gen_objs[k])
-                labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
+                labels_cont = torch.from_numpy(labels_to_cont(labels, generator.unique_draw)).to(device).float()
                 data = data[:, :, 0:1, :, :]
                 data = Variable(torch.from_numpy(data)).to(device)
                 outputs = imitate_net(data, labels_cont, k)
@@ -170,6 +143,7 @@ for epoch in range(config.epochs):
 
     imitate_net.eval()
     loss = Variable(torch.zeros(1)).to(device)
+    acc = 0
     metrics = {"cos": 0, "iou": 0, "cd": 0}
     IOU = 0
     COS = 0
@@ -181,11 +155,13 @@ for epoch in range(config.epochs):
         for k in data_labels_paths.keys():
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])
-                labels_cont = torch.from_numpy(labels_to_cont(labels)).to(device).float()
+                labels_cont = torch.from_numpy(labels_to_cont(labels, generator.unique_draw)).to(device).float()
                 data = data_[:, :, 0:1, :, :]
                 data = Variable(torch.from_numpy(data)).to(device)
                 outputs = imitate_net.test(data, labels_cont, k)
                 loss += imitate_net.loss_function(outputs, labels_cont, k) / types_prog
+                acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
+                       / (len(labels_cont) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     outputs, if_just_expressions=False, if_pred_images=True)
                 correct_programs += len(correct_prog)
@@ -209,9 +185,9 @@ for epoch in range(config.epochs):
                                              (config.batch_size))
 
     # reduce_plat.reduce_on_plateu(metrics["cd"])
-    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
+    print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}, test_acc: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
-                                      metrics["iou"], metrics["cd"], test_loss,))
+                                      metrics["iou"], metrics["cd"], test_loss, acc))
     print(f"CORRECT PROGRAMS: {correct_programs}")
     print(f"PREDICTED PROGRAMS: {pred_programs}")
     print(f"RATIO: {correct_programs/pred_programs}")

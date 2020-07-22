@@ -67,8 +67,8 @@ class ImitateJoint(nn.Module):
         self.out_sz = output_size
 
         # Dense layer to project input ops(labels) to input of rnn (EDITED TO EMBEDDING)
-        self.emb_size = 8
-        self.param_size = 256
+        self.emb_size = 64
+        self.param_size = 64
         self.embedding = nn.Embedding(8, self.emb_size)
         self.dense_params = nn.Linear(3, self.param_size)
         self.input_op_sz = self.emb_size + self.param_size
@@ -83,6 +83,7 @@ class ImitateJoint(nn.Module):
         self.dense_output = nn.Linear(
             in_features=self.hd_sz, out_features=self.out_sz)
         self.drop = nn.Dropout(dropout)
+        self.tf_drop = nn.Dropout(1)
         self.relu = nn.ReLU()
 
     def forward(self, data, input_op, program_len):
@@ -100,13 +101,13 @@ class ImitateJoint(nn.Module):
         input_op = input_op[:, :-1, :]
 
         # add some noise to params during training
-        # input_op[:, :, 1:3] += 8*torch.randn_like(input_op[:, :, 1:3]).to(device) # location
-        # input_op[:, :, 3:] += 4*torch.randn_like(input_op[:, :, 3:]).to(device) # scale
+        input_op[:, :, 1:3] += 8*torch.randn_like(input_op[:, :, 1:3]).to(device) # location
+        input_op[:, :, 3:] += 4*torch.randn_like(input_op[:, :, 3:]).to(device) # scale
         input_params = self.dense_params(input_op[:, :, 1:])
 
         #input_params = torch.zeros((batch_size, input_op.shape[1], 256)).to(device)
         input_type = self.embedding(input_op[:, :, 0].long())
-        input_op_rnn = torch.cat([input_type, input_params], dim=2)
+        input_op_rnn = self.relu(self.tf_drop(torch.cat([input_type, input_params], dim=2)))
         # input_op_rnn = torch.zeros((batch_size, input_op.shape[1]-1, 264)).to(device)
         x_f = x_f.repeat(1, program_len+1, 1)
         input = torch.cat((self.drop(x_f), input_op_rnn), 2)
@@ -128,15 +129,15 @@ class ImitateJoint(nn.Module):
             # along with previous predicted label
 
             # round params to look like quantized training data ONLY FOR TRAINING ON SYN DATA REOMVE AFTER
-            last_output[:, 1:3] = torch.round(last_output[:, 1:3] / 8) * 8
-            last_output[:, 3:] = torch.round(last_output[:, 3:] / 4) * 4
+            # last_output[:, 1:3] = torch.clamp(torch.round(last_output[:, 1:3] / 8) * 8, 8, 56)
+            # last_output[:, 3:] = torch.clamp(torch.round(last_output[:, 3:] / 4) * 4, 8, 32)
 
             input_params = self.dense_params(last_output[:, 1:])
             #input_params = torch.zeros((batch_size, 256)).to(device)
             input_type = self.embedding(last_output[:, 0].long())
             # (timesteps, batch, features)
-            input_op_rnn = self.relu(torch.cat([input_type, input_params], dim=1))
-            # input_op_rnn = torch.zeros((batch_size, 264)).to(device)
+            input_op_rnn = self.relu(self.tf_drop(torch.cat([input_type, input_params], dim=1)))
+            # input_op_rnn = torch.zeros((batch_size, 128)).to(device)
             input = torch.cat((self.drop(x_f), input_op_rnn), 1).reshape((batch_size, 1, -1))
             rnn_out, h = self.rnn(input, h)
             hd = self.relu(self.dense_fc_1(self.drop(rnn_out[:, 0])))

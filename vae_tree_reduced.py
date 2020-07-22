@@ -115,9 +115,9 @@ class VAE(nn.Module):
         if tree is not None:
             return traverse_train(tree, z)
         else:
-            # depth of 4 is enough to generate max_len=13 programs
+            # depth of 7 is enough to generate max_len=13 programs
             # todo: don't hardcode this
-            return traverse_test(z, 4)
+            return traverse_test(z, 7)
 
     def forward(self, x):
         mu, logvar = self.encode(x)

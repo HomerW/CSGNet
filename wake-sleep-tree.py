@@ -62,7 +62,8 @@ def train_generator(generator_net, iter):
             optimizer.step()
 
             label = torch.argmax(tree_to_label(decoder_out), dim=1)
-            acc += (label == tree_to_label(t)).float().sum() / len(label)
+            real_label = tree_to_label(t)
+            acc += (label == real_label).float().sum() / len(label)
             if (i + 1) % 100 == 0:
                 print(f"{i+1}/{len(trees)}")
                 print(batch_loss / 100)
