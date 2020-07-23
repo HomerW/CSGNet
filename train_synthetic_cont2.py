@@ -65,7 +65,8 @@ imitate_net = ImitateJoint(
     input_size=config.input_size,
     hidden_size=config.hidden_size,
     output_size = 8+3,
-    encoder=encoder_net)
+    encoder=encoder_net,
+    unique_draw=generator.unique_draw)
 imitate_net.to(device)
 
 max_len = max(dataset_sizes.keys())
@@ -123,12 +124,12 @@ for epoch in range(config.epochs):
                 data, labels = next(train_gen_objs[k])
                 labels_cont = torch.from_numpy(labels_to_cont(labels, generator.unique_draw)).to(device).float()
                 data = data[:, :, 0:1, :, :]
-                # one_hot_labels = prepare_input_op(labels,
-                #                                   len(generator.unique_draw))
-                # one_hot_labels = Variable(
-                #     torch.from_numpy(one_hot_labels)).to(device)
+                one_hot_labels = prepare_input_op(labels,
+                                                  len(generator.unique_draw))
+                one_hot_labels = Variable(
+                    torch.from_numpy(one_hot_labels)).to(device)
                 data = Variable(torch.from_numpy(data)).to(device)
-                outputs = imitate_net(data, labels_cont, k)
+                outputs = imitate_net(data, one_hot_labels, k)
                 loss_k = imitate_net.loss_function(outputs, labels_cont, k) / types_prog / config.num_traj
                 acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
                        / (len(labels_cont) * (k+1)) / types_prog / config.num_traj
@@ -162,8 +163,12 @@ for epoch in range(config.epochs):
                 # data_, labels = next(train_gen_objs[k])
                 labels_cont = torch.from_numpy(labels_to_cont(labels, generator.unique_draw)).to(device).float()
                 data = data_[:, :, 0:1, :, :]
+                one_hot_labels = prepare_input_op(labels,
+                                                  len(generator.unique_draw))
+                one_hot_labels = Variable(
+                    torch.from_numpy(one_hot_labels)).to(device)
                 data = Variable(torch.from_numpy(data)).to(device)
-                outputs = imitate_net.test(data, labels_cont, k)
+                outputs = imitate_net.test(data, one_hot_labels, k)
                 loss += imitate_net.loss_function(outputs, labels_cont, k) / types_prog
                 acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
                        / (len(labels_cont) * (k+1)) / types_prog / (config.test_size // config.batch_size)
