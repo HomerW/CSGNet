@@ -32,7 +32,7 @@ inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
 generator_hidden_dim = 256
-generator_latent_dim = 20
+generator_latent_dim = 1024
 max_len = 13
 
 """
@@ -42,7 +42,7 @@ TODO: train to convergence and not number of epochs
 def train_generator(generator_net, iter):
     # labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
     labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
-    trees = list(map(label_to_tree, labels))
+    trees = list(map(label_to_tree, labels))[:1]
 
     optimizer = optim.Adam(generator_net.parameters(), lr=1e-4)
 
