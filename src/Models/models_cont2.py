@@ -10,6 +10,7 @@ from ..utils.generators.mixed_len_generator import Parser, \
     SimulateStack
 from typing import List
 from globals import device
+from closest_token import closest_token
 
 class Encoder(nn.Module):
     def __init__(self, dropout=0.2):
@@ -154,37 +155,47 @@ class ImitateJoint(nn.Module):
             rnn_out, h = self.rnn(input, h)
             hd = self.relu(self.dense_fc_1(self.drop(rnn_out[:, 0])))
             output = self.dense_output(self.drop(hd))
-            type = torch.argmax(output[:, :8], dim=1).float()
-            params = F.relu(output[:, 8:])
-            # last_output = torch.cat([type.reshape((batch_size, 1)), params], dim=1)
+            # type = torch.argmax(output[:, :8], dim=1).float()
+            # params = F.relu(output[:, 8:])
+            # # last_output = torch.cat([type.reshape((batch_size, 1)), params], dim=1)
+            #
+            # # params[:, :2] = torch.clamp(torch.round(params[:, :2] / 8) * 8, 8, 56)
+            # # params[:, 2:] = torch.clamp(torch.round(params[:, 2:] / 4) * 4, 8, 32)
+            # last_output = np.zeros((batch_size, self.num_draws + 1))
+            # for j in range(batch_size):
+            #     vec = params[j].cpu().numpy().reshape((-1,))
+            #     ct = closest_token(type[j], vec, self.unique_draw)
+            #     last_output[j][ct] = 1
+            #     # pstr = str([round(x) for x in pstr])[1:-1].replace(" ", "")
+            #     # if type[j] == 4:
+            #     #     last_output[j][self.unique_draw.index(f"c({pstr})")] = 1
+            #     # if type[j] == 5:
+            #     #     last_output[j][self.unique_draw.index(f"s({pstr})")] = 1
+            #     # if type[j] == 6:
+            #     #     last_output[j][self.unique_draw.index(f"t({pstr})")] = 1
+            # last_output = torch.from_numpy(last_output).to(device).float()
+            next_input_op = torch.max(output, 1)[1].view(batch_size, 1)
+            arr = Variable(
+                torch.zeros(batch_size, self.num_draws + 1).scatter_(
+                    1, next_input_op.data.cpu(), 1.0)).cuda()
 
-            params[:, :2] = torch.clamp(torch.round(params[:, :2] / 8) * 8, 8, 56)
-            params[:, 2:] = torch.clamp(torch.round(params[:, 2:] / 4) * 4, 8, 32)
-            last_output = np.zeros((batch_size, self.num_draws + 1))
-            for j in range(batch_size):
-                pstr = params[j].cpu().numpy().reshape((-1,))
-                pstr = str([round(x) for x in pstr])[1:-1].replace(" ", "")
-                if type[j] == 4:
-                    last_output[j][self.unique_draw.index(f"c({pstr})")] = 1
-                if type[j] == 5:
-                    last_output[j][self.unique_draw.index(f"s({pstr})")] = 1
-                if type[j] == 6:
-                    last_output[j][self.unique_draw.index(f"t({pstr})")] = 1
-            last_output = torch.from_numpy(last_output).to(device).float()
+            last_output = arr
 
             outputs.append(output)
         return torch.stack(outputs).permute(1, 0, 2)
 
     def loss_function(self, outputs, labels, program_len):
         # remove start token from label
-        labels = labels[:, 1:, :]
+        # labels = labels[:, 1:, :]
 
-        type_loss = F.cross_entropy(outputs[:, :, :8].permute(0, 2, 1), labels[:, :, 0].long())
-        param_loss = F.mse_loss(outputs[:, :, 8:], labels[:, :, 1:])
-        # scaling factor (0.01) chosen to make param_loss and type_loss about equal
-        param_loss *= 0.01
-        # print(param_loss/type_loss)
-        return type_loss + param_loss
+        # type_loss = F.cross_entropy(outputs[:, :, :8].permute(0, 2, 1), labels[:, :, 0].long())
+        # param_loss = F.mse_loss(outputs[:, :, 8:], labels[:, :, 1:])
+        # # scaling factor (0.01) chosen to make param_loss and type_loss about equal
+        # param_loss *= .01
+        # # print(param_loss/type_loss)
+        # return type_loss + param_loss
+
+        return F.cross_entropy(outputs.permute(0, 2, 1), labels)
 
 
 class ParseModelOutput:
@@ -255,7 +266,7 @@ class ParseModelOutput:
             return expressions
         stacks = []
         for index, exp in enumerate(expressions):
-            # print(exp)
+            print(exp)
             program = self.Parser.parse(exp)
             if validity(program, len(program), len(program) - 1):
                 correct_programs.append(index)

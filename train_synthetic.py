@@ -65,19 +65,19 @@ imitate_net = ImitateJoint(
     mode=config.mode,
     num_draws=len(generator.unique_draw),
     canvas_shape=config.canvas_shape,
-    teacher_force=True)
+    teacher_force=False)
 imitate_net.cuda()
 
-if config.preload_model:
-    print("pre loading model")
-    pretrained_dict = torch.load(config.pretrain_modelpath)
-    imitate_net_dict = imitate_net.state_dict()
-    pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in imitate_net_dict
-    }
-    imitate_net_dict.update(pretrained_dict)
-    imitate_net.load_state_dict(imitate_net_dict)
+# if config.preload_model:
+#     print("pre loading model")
+#     pretrained_dict = torch.load(config.pretrain_modelpath)
+#     imitate_net_dict = imitate_net.state_dict()
+#     pretrained_dict = {
+#         k: v
+#         for k, v in pretrained_dict.items() if k in imitate_net_dict
+#     }
+#     imitate_net_dict.update(pretrained_dict)
+#     imitate_net.load_state_dict(imitate_net_dict)
 
 for param in imitate_net.parameters():
     param.requires_grad = True
@@ -185,9 +185,13 @@ for epoch in range(config.epochs):
                 test_outputs = imitate_net([data, one_hot_labels, k])
                 loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
                          (k + 1)) / types_prog
-                acc += float((torch.argmax(test_outputs, dim=2).permute(1, 0) == labels).float().sum()) \
-                       / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 test_output = imitate_net.test([data, one_hot_labels, max_len])
+                if not imitate_net.tf:
+                    acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
+                           / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
+                else:
+                    acc += float((torch.argmax(test_output[:k], dim=2).permute(1, 0) == labels[:, :-1]).float().sum()) \
+                           / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_output, if_just_expressions=False, if_pred_images=True)
                 correct_programs += len(correct_prog)

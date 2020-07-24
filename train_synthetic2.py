@@ -19,16 +19,15 @@ import torch.optim as optim
 from torch.autograd.variable import Variable
 
 from src.Models.loss import losses_joint
-from src.Models.models_cont2 import Encoder
-from src.Models.models_cont2 import ImitateJoint, ParseModelOutput
-from src.Models.models import ParseModelOutput
+from src.Models.models2 import Encoder
+from src.Models.models2 import ImitateJoint
+from src.Models.models_cont2 import ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
-from itertools import product
-from globals import device
 from cont import labels_to_cont
+from globals import device
 
 config = read_config.Config("config_synthetic.yml")
 
@@ -36,7 +35,7 @@ print(config.config, flush=True)
 
 # Encoder
 encoder_net = Encoder(config.encoder_drop)
-encoder_net.to(device)
+encoder_net.cuda()
 
 data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
                      5: "data/synthetic/two_ops/expressions.txt",
@@ -63,17 +62,36 @@ generator = MixedGenerateData(
     canvas_shape=config.canvas_shape)
 
 imitate_net = ImitateJoint(
+    hd_sz=config.hidden_size,
     input_size=config.input_size,
-    hidden_size=config.hidden_size,
-    output_size = len(generator.unique_draw),
     encoder=encoder_net,
-    unique_draw=generator.unique_draw)
-imitate_net.to(device)
+    mode=config.mode,
+    num_draws=len(generator.unique_draw),
+    canvas_shape=config.canvas_shape,
+    teacher_force=False)
+imitate_net.cuda()
+
+if config.preload_model:
+    print("pre loading model")
+    pretrained_dict = torch.load(config.pretrain_modelpath)
+    imitate_net_dict = imitate_net.state_dict()
+    pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in imitate_net_dict
+    }
+    imitate_net_dict.update(pretrained_dict)
+    imitate_net.load_state_dict(imitate_net_dict)
+
+for param in imitate_net.parameters():
+    param.requires_grad = True
+
+for param in encoder_net.parameters():
+    param.requires_grad = True
 
 max_len = max(dataset_sizes.keys())
 
 optimizer = optim.Adam(
-    imitate_net.parameters(),
+    [para for para in imitate_net.parameters() if para.requires_grad],
     weight_decay=config.weight_decay,
     lr=config.lr)
 
@@ -108,9 +126,6 @@ for k in dataset_sizes.keys():
 prev_test_loss = 1e20
 prev_test_cd = 1e20
 prev_test_iou = 0
-
-config.epochs = 400
-
 for epoch in range(config.epochs):
     train_loss = 0
     Accuracies = []
@@ -118,7 +133,7 @@ for epoch in range(config.epochs):
     for batch_idx in range(config.train_size //
                            (config.batch_size * config.num_traj)):
         optimizer.zero_grad()
-        loss = Variable(torch.zeros(1)).to(device).data
+        loss = Variable(torch.zeros(1)).cuda().data
         acc = 0
         for _ in range(config.num_traj):
             for k in dataset_sizes.keys():
@@ -128,29 +143,30 @@ for epoch in range(config.epochs):
                 one_hot_labels = prepare_input_op(labels,
                                                   len(generator.unique_draw))
                 one_hot_labels = Variable(
-                    torch.from_numpy(one_hot_labels)).to(device)
-                data = Variable(torch.from_numpy(data)).to(device)
+                    torch.from_numpy(one_hot_labels)).cuda()
+                data = Variable(torch.from_numpy(data)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
-                outputs = imitate_net(data, one_hot_labels, k)
-                # loss_k = imitate_net.loss_function(outputs, labels_cont, k) / types_prog / config.num_traj
-                loss_k = imitate_net.loss_function(outputs, labels, k) / types_prog / config.num_traj
-                # acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
-                #        / (len(labels_cont) * (k+1)) / types_prog / config.num_traj
+                outputs = imitate_net([data, one_hot_labels, k])
+                if not imitate_net.tf:
+                    acc += float((torch.argmax(torch.stack(outputs), dim=2).permute(1, 0) == labels).float().sum()) \
+                           / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
+                else:
+                    acc += float((torch.argmax(outputs, dim=2).permute(1, 0) == labels).float().sum()) \
+                           / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
+                loss_k = imitate_net.loss_function(outputs, labels_cont, k) / types_prog / config.num_traj
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k
 
-        #torch.nn.utils.clip_grad_norm_(imitate_net.parameters(), 1e-5)
         optimizer.step()
         train_loss += loss
         print(f"batch {batch_idx} train loss: {loss.cpu().numpy()}")
-        # print(f"acc: {acc}")
+        print(f"acc: {acc}")
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
     print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
-
     imitate_net.eval()
-    loss = Variable(torch.zeros(1)).to(device)
+    loss = Variable(torch.zeros(1)).cuda()
     acc = 0
     metrics = {"cos": 0, "iou": 0, "cd": 0}
     IOU = 0
@@ -159,29 +175,28 @@ for epoch in range(config.epochs):
     correct_programs = 0
     pred_programs = 0
     for batch_idx in range(config.test_size // (config.batch_size)):
-        # parser = ParseModelOutput(max_len // 2 + 1, config.canvas_shape)
         parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
         for k in dataset_sizes.keys():
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])
-                # data_, labels = next(train_gen_objs[k])
-                labels_cont = torch.from_numpy(labels_to_cont(labels, generator.unique_draw)).to(device).float()
-                data = data_[:, :, 0:1, :, :]
-                one_hot_labels = prepare_input_op(labels,
-                                                  len(generator.unique_draw))
-                one_hot_labels = Variable(
-                    torch.from_numpy(one_hot_labels)).to(device)
-                data = Variable(torch.from_numpy(data)).to(device)
-                outputs = imitate_net.test(data, one_hot_labels, max_len)
+                one_hot_labels = prepare_input_op(labels, len(
+                    generator.unique_draw))
+                one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
+                data = Variable(torch.from_numpy(data_)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
-                # loss += imitate_net.loss_function(outputs, labels_cont, k) / types_prog
-                # loss += imitate_net.loss_function(outputs, labels, k) / types_prog
-                # acc += float((torch.argmax(outputs[:, :, :8], dim=2) == labels_cont[:, 1:, 0]).float().sum()) \
-                #        / (len(labels_cont) * (k+1)) / types_prog / (config.test_size // config.batch_size)
-                outputs = outputs.permute(1, 0, 2)
+                # test_outputs = imitate_net([data, one_hot_labels, k])
+                # loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
+                #          (k + 1)) / types_prog
+                test_output = imitate_net.test([data, one_hot_labels, max_len])
+                if not imitate_net.tf:
+                    acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
+                           / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
+                else:
+                    acc += float((torch.argmax(test_output[:k], dim=2).permute(1, 0) == labels[:, :-1]).float().sum()) \
+                           / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
-                    outputs, if_just_expressions=False, if_pred_images=True)
+                    test_output, if_just_expressions=False, if_pred_images=True)
                 correct_programs += len(correct_prog)
                 pred_programs += len(pred_prog)
                 target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
@@ -202,7 +217,7 @@ for epoch in range(config.epochs):
     test_loss = test_losses.cpu().numpy() / (config.test_size //
                                              (config.batch_size))
 
-    # reduce_plat.reduce_on_plateu(metrics["cd"])
+    reduce_plat.reduce_on_plateu(metrics["cd"])
     print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}, test_acc: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
                                       metrics["iou"], metrics["cd"], test_loss, acc))
@@ -210,9 +225,9 @@ for epoch in range(config.epochs):
     print(f"PREDICTED PROGRAMS: {pred_programs}")
     print(f"RATIO: {correct_programs/pred_programs}")
 
-    del test_losses, outputs
+    del test_losses, test_outputs
     if prev_test_cd > metrics["cd"]:
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
-                   "trained_models/synthetic_cont.pth")
+                   "trained_models/synthetic.pth")
         prev_test_cd = metrics["cd"]
