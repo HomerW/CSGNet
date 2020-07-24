@@ -10,6 +10,7 @@ from ..utils.generators.mixed_len_generator import Parser, \
     SimulateStack
 from typing import List
 from closest_token import closest_token
+from globals import device
 
 
 class Encoder(nn.Module):
@@ -50,7 +51,8 @@ class ImitateJoint(nn.Module):
                  num_draws=None,
                  canvas_shape=[64, 64],
                  dropout=0.5,
-                 teacher_force=False):
+                 teacher_force=False,
+                 unique_draw=None):
         """
         Defines RNN structure that takes features encoded by CNN and produces program
         instructions at every time step.
@@ -73,6 +75,7 @@ class ImitateJoint(nn.Module):
         self.mode = mode
         self.canvas_shape = canvas_shape
         self.num_draws = num_draws
+        self.unique_draw = unique_draw
 
         # Dense layer to project input ops(labels) to input of rnn
         self.input_op_sz = 128
@@ -236,24 +239,21 @@ class ImitateJoint(nn.Module):
                     vec = params[j].cpu().numpy().reshape((-1,))
                     ct = closest_token(type[j], vec, self.unique_draw)
                     last_output[j][ct] = 1
-                    # pstr = str([round(x) for x in pstr])[1:-1].replace(" ", "")
-                    # if type[j] == 4:
-                    #     last_output[j][self.unique_draw.index(f"c({pstr})")] = 1
-                    # if type[j] == 5:
-                    #     last_output[j][self.unique_draw.index(f"s({pstr})")] = 1
-                    # if type[j] == 6:
-                    #     last_output[j][self.unique_draw.index(f"t({pstr})")] = 1
                 last_output = torch.from_numpy(last_output).to(device).float()
-                outputs.append(output)
+                outputs.append(last_output)
             return outputs
 
         else:
             assert False, "Incorrect mode!!"
 
     def loss_function(self, outputs, labels):
+        # remove start token from label
+        labels = labels[:, 1:, :]
+
         outputs = torch.stack(outputs).permute(1, 2, 0)
+
         type_loss = F.cross_entropy(outputs[:, :8, :], labels[:, :, 0].long())
-        param_loss = F.mse_loss(outputs[:, :, 8:], labels[:, :, 1:])
+        param_loss = F.mse_loss(outputs[:, 8:, :].permute(0, 2, 1), labels[:, :, 1:])
         # scaling factor (0.01) chosen to make param_loss and type_loss about equal
         param_loss *= .01
         # print(param_loss/type_loss)

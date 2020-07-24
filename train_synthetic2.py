@@ -54,7 +54,7 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
-dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
+# dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -68,19 +68,9 @@ imitate_net = ImitateJoint(
     mode=config.mode,
     num_draws=len(generator.unique_draw),
     canvas_shape=config.canvas_shape,
-    teacher_force=False)
+    teacher_force=False,
+    unique_draw=generator.unique_draw)
 imitate_net.cuda()
-
-if config.preload_model:
-    print("pre loading model")
-    pretrained_dict = torch.load(config.pretrain_modelpath)
-    imitate_net_dict = imitate_net.state_dict()
-    pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in imitate_net_dict
-    }
-    imitate_net_dict.update(pretrained_dict)
-    imitate_net.load_state_dict(imitate_net_dict)
 
 for param in imitate_net.parameters():
     param.requires_grad = True
@@ -153,7 +143,7 @@ for epoch in range(config.epochs):
                 else:
                     acc += float((torch.argmax(outputs, dim=2).permute(1, 0) == labels).float().sum()) \
                            / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
-                loss_k = imitate_net.loss_function(outputs, labels_cont, k) / types_prog / config.num_traj
+                loss_k = imitate_net.loss_function(outputs, labels_cont) / types_prog / config.num_traj
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k
@@ -175,8 +165,7 @@ for epoch in range(config.epochs):
     correct_programs = 0
     pred_programs = 0
     for batch_idx in range(config.test_size // (config.batch_size)):
-        parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
-                          config.canvas_shape)
+        parser = ParseModelOutput(max_len // 2 + 1, config.canvas_shape)
         for k in dataset_sizes.keys():
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])
@@ -195,6 +184,7 @@ for epoch in range(config.epochs):
                 else:
                     acc += float((torch.argmax(test_output[:k], dim=2).permute(1, 0) == labels[:, :-1]).float().sum()) \
                            / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
+                test_output = torch.stack(test_output).permute(1, 0, 2)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_output, if_just_expressions=False, if_pred_images=True)
                 correct_programs += len(correct_prog)
@@ -225,7 +215,7 @@ for epoch in range(config.epochs):
     print(f"PREDICTED PROGRAMS: {pred_programs}")
     print(f"RATIO: {correct_programs/pred_programs}")
 
-    del test_losses, test_outputs
+    del test_losses, test_output
     if prev_test_cd > metrics["cd"]:
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
