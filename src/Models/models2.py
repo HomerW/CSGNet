@@ -143,7 +143,7 @@ class ImitateJoint(nn.Module):
                     hd = self.relu(self.dense_fc_1(self.drop(h[0])))
                     output = self.dense_output(self.drop(hd))
                     outputs.append(output)
-                return outputs
+                return torch.stack(outputs)
             else:
                 # remove stop token for input to decoder
                 input_op_rnn = self.relu(self.dense_input_op(input_op))[:, :-1, :].permute(1, 0, 2)
@@ -240,7 +240,7 @@ class ImitateJoint(nn.Module):
                     ct = closest_token(type[j], vec, self.unique_draw)
                     last_output[j][ct] = 1
                 last_output = torch.from_numpy(last_output).to(device).float()
-                outputs.append(last_output)
+                outputs.append(output)
             return outputs
 
         else:
@@ -250,7 +250,7 @@ class ImitateJoint(nn.Module):
         # remove start token from label
         labels = labels[:, 1:, :]
 
-        outputs = torch.stack(outputs).permute(1, 2, 0)
+        outputs = outputs.permute(1, 2, 0)
 
         type_loss = F.cross_entropy(outputs[:, :8, :], labels[:, :, 0].long())
         param_loss = F.mse_loss(outputs[:, 8:, :].permute(0, 2, 1), labels[:, :, 1:])

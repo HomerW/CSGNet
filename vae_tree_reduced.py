@@ -28,17 +28,28 @@ class VAE(nn.Module):
 
         # encoding
         self.embed = nn.Embedding(self.vocab_size, hidden_dim)
-        self.encode_union = MLP(3*hidden_dim, hidden_dim, hidden_dim)
-        self.encode_intersect = MLP(3*hidden_dim, hidden_dim, hidden_dim)
-        self.encode_subtract = MLP(3*hidden_dim, hidden_dim, hidden_dim)
-        self.encode_mu = MLP(hidden_dim, hidden_dim, latent_dim)
-        self.encode_logvar = MLP(hidden_dim, hidden_dim, latent_dim)
+        # self.encode_union = MLP(3*hidden_dim, hidden_dim, hidden_dim)
+        # self.encode_intersect = MLP(3*hidden_dim, hidden_dim, hidden_dim)
+        # self.encode_subtract = MLP(3*hidden_dim, hidden_dim, hidden_dim)
+        # self.encode_mu = MLP(hidden_dim, hidden_dim, latent_dim)
+        # self.encode_logvar = MLP(hidden_dim, hidden_dim, latent_dim)
+        #
+        # # decoding
+        # self.node_type = MLP(latent_dim, hidden_dim, self.vocab_size)
+        # self.decode_union = MLP(latent_dim, hidden_dim, 2*latent_dim)
+        # self.decode_intersect = MLP(latent_dim, hidden_dim, 2*latent_dim)
+        # self.decode_subtract = MLP(latent_dim, hidden_dim, 2*latent_dim)
+        self.encode_union = nn.Linear(2*hidden_dim, hidden_dim)
+        self.encode_intersect = nn.Linear(2*hidden_dim, hidden_dim)
+        self.encode_subtract = nn.Linear(2*hidden_dim, hidden_dim)
+        self.encode_mu = nn.Linear(hidden_dim, latent_dim)
+        self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
 
         # decoding
-        self.node_type = MLP(latent_dim, hidden_dim, self.vocab_size)
-        self.decode_union = MLP(latent_dim, hidden_dim, 2*latent_dim)
-        self.decode_intersect = MLP(latent_dim, hidden_dim, 2*latent_dim)
-        self.decode_subtract = MLP(latent_dim, hidden_dim, 2*latent_dim)
+        self.node_type = nn.Linear(latent_dim, self.vocab_size)
+        self.decode_union = nn.Linear(latent_dim, 2*latent_dim)
+        self.decode_intersect = nn.Linear(latent_dim, 2*latent_dim)
+        self.decode_subtract = nn.Linear(latent_dim, 2*latent_dim)
 
     def encode(self, tree):
         def traverse(node):
@@ -49,8 +60,7 @@ class VAE(nn.Module):
             else:
                 lchild = traverse(node["left"])
                 rchild = traverse(node["right"])
-                par = torch.tanh(self.embed(node["value"]))
-                input = torch.cat([par, lchild, rchild], 0)
+                input = torch.cat([lchild, rchild], 0)
                 if node["value"] == 396:
                     return torch.tanh(self.encode_union(input))
                 elif node["value"] == 397:
@@ -150,4 +160,4 @@ class VAE(nn.Module):
 
         # KLD *= .01
         # print(CE/KLD)
-        return CE + KLD
+        return CE

@@ -39,22 +39,16 @@ encoder_net.cuda()
 
 data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
                      5: "data/synthetic/two_ops/expressions.txt",
-                     7: "data/synthetic/three_ops/expressions.txt",
-                     9: "data/synthetic/four_ops/expressions.txt",
-                     11: "data/synthetic/five_ops/expressions.txt",
-                     13: "data/synthetic/six_ops/expressions.txt"}
+                     7: "data/synthetic/three_ops/expressions.txt"}
 # first element of list is num of training examples, and second is number of
 # testing examples.
 proportion = config.proportion  # proportion is in percentage. vary from [1, 100].
 dataset_sizes = {
-    3: [30000, 50 * proportion],
-    5: [110000, 500 * proportion],
-    7: [170000, 500 * proportion],
-    9: [270000, 500 * proportion],
-    11: [370000, 1000 * proportion],
-    13: [370000, 1000 * proportion]
+    3: [proportion * 250, proportion * 50],
+    5: [proportion * 1000, proportion * 100],
+    7: [proportion * 1500, proportion * 200]
 }
-# dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
+dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -68,7 +62,7 @@ imitate_net = ImitateJoint(
     mode=config.mode,
     num_draws=len(generator.unique_draw),
     canvas_shape=config.canvas_shape,
-    teacher_force=False,
+    teacher_force=True,
     unique_draw=generator.unique_draw)
 imitate_net.cuda()
 
@@ -190,7 +184,7 @@ for epoch in range(config.epochs):
     test_loss = test_losses.cpu().numpy() / (config.test_size //
                                              (config.batch_size))
 
-    reduce_plat.reduce_on_plateu(metrics["cd"])
+    # reduce_plat.reduce_on_plateu(metrics["cd"])
     print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
                                       metrics["iou"], metrics["cd"], test_loss))

@@ -32,7 +32,7 @@ inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
 generator_hidden_dim = 256
-generator_latent_dim = 1024
+generator_latent_dim = 128
 max_len = 13
 
 """
@@ -42,7 +42,8 @@ TODO: train to convergence and not number of epochs
 def train_generator(generator_net, iter):
     # labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
     labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
-    trees = list(map(label_to_tree, labels))[:1]
+    trees = list(map(label_to_tree, labels))
+    trees = trees[:1000]
 
     optimizer = optim.Adam(generator_net.parameters(), lr=1e-4)
 
@@ -50,7 +51,7 @@ def train_generator(generator_net, iter):
 
     for epoch in range(100000000):
         train_loss = 0
-        batch_loss = 0
+        # batch_loss = 0
         acc = 0
         np.random.shuffle(trees)
         for i, t in enumerate(trees):
@@ -58,44 +59,46 @@ def train_generator(generator_net, iter):
             decoder_out, mu, logvar = generator_net(t)
             loss = generator_net.loss_function(decoder_out, t, mu, logvar)
             loss.backward()
-            batch_loss += float(loss)
+            # batch_loss += float(loss)
+            train_loss += float(loss)
             optimizer.step()
 
             label = torch.argmax(tree_to_label(decoder_out), dim=1)
             real_label = tree_to_label(t)
             acc += (label == real_label).float().sum() / len(label)
-            if (i + 1) % 100 == 0:
-                print(f"{i+1}/{len(trees)}")
-                print(batch_loss / 100)
-                print(f"acc: {acc / (i+1)}")
-                train_loss += batch_loss / 100
-                batch_loss = 0
+            # if (i + 1) % 100 == 0:
+            #     print(f"{i+1}/{len(trees)}")
+            #     print(batch_loss / 100)
+            #     print(f"acc: {acc / (i+1)}")
+            #     train_loss += batch_loss / 100
+            #     batch_loss = 0
 
             del decoder_out, mu, logvar
 
-        print(f"generator epoch {epoch} loss: {train_loss / (len(labels) / 100)}")
+        print(f"generator epoch {epoch} loss: {train_loss / (len(trees))}, acc: {acc / len(trees)}")
 
-        with torch.no_grad():
-            test_sample = np.zeros((inference_test_size, max_len))
-            total_len = 0
-            for i in range(inference_test_size):
-                latent = torch.randn(generator_latent_dim).to(device)
-                sampled_tree = generator_net.decode(latent)
-                sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
-                total_len += len(sampled_label)
-                # print(sampled_label)
-                sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
-                test_sample[i] = sampled_label.cpu().numpy()
-            print(f"AVERAGE SAMPLE LENGTH: {total_len/inference_test_size}")
-            os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/"), exist_ok=True)
-            os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/val/"), exist_ok=True)
-            torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/labels.pt")
-            torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/val/labels.pt")
-            # fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/tmp",
-            #                                       "trained_models/fid-model.pth",
-            #                                       100,
-            #                                       32)
-            # print('FID: ', fid_value)
+        if (epoch + 1) % 10 == 0:
+            with torch.no_grad():
+                test_sample = np.zeros((inference_test_size, max_len))
+                total_len = 0
+                for i in range(inference_test_size):
+                    latent = torch.randn(generator_latent_dim).to(device)
+                    sampled_tree = generator_net.decode(latent)
+                    sampled_label = torch.argmax(tree_to_label(sampled_tree), dim=1)
+                    total_len += len(sampled_label)
+                    # print(sampled_label)
+                    sampled_label = F.pad(sampled_label, (0, max_len-len(sampled_label)), 'constant', 399)
+                    test_sample[i] = sampled_label.cpu().numpy()
+                # print(f"AVERAGE SAMPLE LENGTH: {total_len/inference_test_size}")
+                os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/"), exist_ok=True)
+                os.makedirs(os.path.dirname(f"wake_sleep_data_tree/generator/tmp/val/"), exist_ok=True)
+                torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/labels.pt")
+                torch.save(test_sample, f"wake_sleep_data_tree/generator/tmp/val/labels.pt")
+                # fid_value = calculate_fid_given_paths(f"wake_sleep_data_tree/generator/tmp",
+                #                                       "trained_models/fid-model.pth",
+                #                                       100,
+                #                                       32)
+                # print('FID: ', fid_value)
 
     with torch.no_grad():
         train_sample = np.zeros((inference_train_size, max_len))
