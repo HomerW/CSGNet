@@ -43,7 +43,7 @@ def train_generator(generator_net, iter):
     # labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
     labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
     trees = list(map(label_to_tree, labels))
-    trees = trees[:1000]
+    trees = trees[:10000]
 
     optimizer = optim.Adam(generator_net.parameters(), lr=1e-4)
 
@@ -54,13 +54,18 @@ def train_generator(generator_net, iter):
         # batch_loss = 0
         acc = 0
         np.random.shuffle(trees)
+        prev_loss = 1e20
         for i, t in enumerate(trees):
             optimizer.zero_grad()
             decoder_out, mu, logvar = generator_net(t)
-            loss = generator_net.loss_function(decoder_out, t, mu, logvar)
+            if prev_loss < 5:
+                loss = generator_net.loss_function(decoder_out, t, mu, logvar, True)
+            else:
+                loss = generator_net.loss_function(decoder_out, t, mu, logvar, False)
             loss.backward()
             # batch_loss += float(loss)
             train_loss += float(loss)
+            prev_loss = float(loss)
             optimizer.step()
 
             label = torch.argmax(tree_to_label(decoder_out), dim=1)

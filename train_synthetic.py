@@ -45,7 +45,7 @@ dataset_sizes = {
     5: [proportion * 1000, proportion * 100],
     7: [proportion * 1500, proportion * 200]
 }
-dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
+# dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -208,7 +208,7 @@ for epoch in range(config.epochs):
     test_loss = test_losses.cpu().numpy() / (config.test_size //
                                              (config.batch_size))
 
-    #reduce_plat.reduce_on_plateu(metrics["cd"])
+    reduce_plat.reduce_on_plateu(metrics["cd"])
     print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}, test_acc: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
                                       metrics["iou"], metrics["cd"], test_loss, acc))

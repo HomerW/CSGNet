@@ -135,7 +135,7 @@ class VAE(nn.Module):
         return self.decode(z, x), mu, logvar
 
     # Reconstruction + KL divergence losses
-    def loss_function(self, recon_x, x, mu, logvar):
+    def loss_function(self, recon_x, x, mu, logvar, anneal):
         # returns flattened tree and target node types
         def flatten(node):
             if node["right"] is None and node["left"] is None:
@@ -160,4 +160,7 @@ class VAE(nn.Module):
 
         # KLD *= .01
         # print(CE/KLD)
-        return CE
+        if anneal:
+            return CE + KLD
+        else:
+            return CE
