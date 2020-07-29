@@ -199,7 +199,7 @@ class ImitateJoint(nn.Module):
 
 
 class ParseModelOutput:
-    def __init__(self, stack_size, canvas_shape):
+    def __init__(self, unique_draw, stack_size, canvas_shape):
         """
         This class parses complete output from the network which are in joint
         fashion. This class can be used to generate final canvas and
@@ -209,6 +209,7 @@ class ParseModelOutput:
         :param steps: Number of steps in the program
         :param canvas_shape: Shape of the canvases
         """
+        self.unique_draws = unique_draw
         self.canvas_shape = canvas_shape
         self.stack_size = stack_size
         self.Parser = Parser()

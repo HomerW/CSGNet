@@ -8,12 +8,14 @@ import numpy as np
 import torch
 from torch.autograd.variable import Variable
 
-from src.Models.models import Encoder
-from src.Models.models import ImitateJoint
-from src.Models.models import ParseModelOutput
+from src.Models.models2 import Encoder
+from src.Models.models2 import ImitateJoint, validity
+# from src.Models.models_cont2 import ParseModelOutput
+from src.Models.models2 import ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.train_utils import prepare_input_op, chamfer
+from cont import labels_to_cont
 
 config = read_config.Config("config_synthetic.yml")
 model_name = config.pretrain_modelpath.split("/")[-1][0:-4]
@@ -37,20 +39,24 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
+
 dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(data_labels_paths=data_labels_paths,
                               batch_size=config.batch_size,
                               canvas_shape=config.canvas_shape)
 
-imitate_net = ImitateJoint(hd_sz=config.hidden_size,
-                           input_size=config.input_size,
-                           encoder=encoder_net,
-                           mode=config.mode,
-                           num_draws=len(generator.unique_draw),
-                           canvas_shape=config.canvas_shape)
-
+imitate_net = ImitateJoint(
+    hd_sz=config.hidden_size,
+    input_size=config.input_size,
+    encoder=encoder_net,
+    mode=config.mode,
+    num_draws=len(generator.unique_draw),
+    canvas_shape=config.canvas_shape,
+    teacher_force=True,
+    unique_draw=generator.unique_draw)
 imitate_net.cuda()
+
 if config.preload_model:
     print("pre loading model")
     pretrained_dict = torch.load(config.pretrain_modelpath)
@@ -66,6 +72,7 @@ imitate_net.eval()
 max_len = max(data_labels_paths.keys())
 parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1,
                           max_len, config.canvas_shape)
+# parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, config.canvas_shape)
 
 # total size according to the test batch size.
 total_size = 0
@@ -105,12 +112,16 @@ for jit in [True, False]:
         for _ in range(dataset_sizes[k][1] // test_batch_size):
             with torch.no_grad():
                 data_, labels = next(test_gen_objs[k])
+                labels_cont = torch.from_numpy(labels_to_cont(labels, generator.unique_draw)).cuda().float()
                 one_hot_labels = prepare_input_op(labels,
                                                   len(generator.unique_draw))
                 one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
                 data = Variable(torch.from_numpy(data_)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 test_output = imitate_net.test([data, one_hot_labels, max_len])
+                # test_output = torch.stack(test_output).permute(1, 0, 2)
+                # acc += float((torch.argmax(test_output[:, :, :8], dim=2)[:, :(k)] == labels_cont[:, 1:-1, 0]).float().sum()) \
+                #        / (len(labels_cont) * (k)) / len(dataset_sizes) / (dataset_sizes[k][1] // test_batch_size)
                 acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
                       / (len(labels) * (k)) / len(dataset_sizes) / (dataset_sizes[k][1] // test_batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(

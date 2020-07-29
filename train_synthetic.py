@@ -180,12 +180,8 @@ for epoch in range(config.epochs):
                 loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
                          (k + 1)) / types_prog
                 test_output = imitate_net.test([data, one_hot_labels, max_len])
-                if not imitate_net.tf:
-                    acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
-                           / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
-                else:
-                    acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
-                           / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
+                acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
+                        / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_output, if_just_expressions=False, if_pred_images=True)
                 correct_programs += len(correct_prog)

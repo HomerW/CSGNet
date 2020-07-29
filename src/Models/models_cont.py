@@ -138,6 +138,7 @@ class ImitateJoint(nn.Module):
             output = self.dense_output(self.drop(hd))
             type = torch.argmax(output[:, :8], dim=1).float()
             params = F.relu(self.mdn.sample(output))
+            print(params.shape)
             last_output = torch.cat([type.reshape((batch_size, 1)), params], dim=1)
             outputs.append(output)
         return torch.stack(outputs).permute(1, 0, 2)
@@ -155,7 +156,7 @@ class ImitateJoint(nn.Module):
 
 
 class ParseModelOutput:
-    def __init__(self, stack_size, canvas_shape , mdn):
+    def __init__(self, unique_draw, stack_size, canvas_shape , mdn):
         """
         This class parses complete output from the network which are in joint
         fashion. This class can be used to generate final canvas and
@@ -165,6 +166,7 @@ class ParseModelOutput:
         :param steps: Number of steps in the program
         :param canvas_shape: Shape of the canvases
         """
+        self.unique_draws = unique_draw
         self.canvas_shape = canvas_shape
         self.stack_size = stack_size
         self.Parser = Parser()
@@ -223,6 +225,7 @@ class ParseModelOutput:
             return expressions
         stacks = []
         for index, exp in enumerate(expressions):
+            print(exp)
             program = self.Parser.parse(exp)
             if validity(program, len(program), len(program) - 1):
                 correct_programs.append(index)

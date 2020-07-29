@@ -9,9 +9,9 @@ import numpy as np
 import torch
 from torch.autograd.variable import Variable
 
-from src.Models.models import Encoder
-from src.Models.models import ImitateJoint, validity
-from src.Models.models import ParseModelOutput
+from src.Models.models2 import Encoder
+from src.Models.models2 import ImitateJoint, validity
+from src.Models.models2 import ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.train_utils import prepare_input_op, chamfer, beams_parser
@@ -42,6 +42,7 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
+dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(data_labels_paths=data_labels_paths,
                               batch_size=config.batch_size,
@@ -108,7 +109,8 @@ for jit in [True, False]:
             jitter_program=jit)
     for k in dataset_sizes.keys():
         test_batch_size = config.batch_size
-        for _ in range(dataset_sizes[k][1] // test_batch_size):
+        for batch_idx in range(dataset_sizes[k][1] // test_batch_size):
+            print(f"{k}, {batch_idx} / {dataset_sizes[k][1] // test_batch_size}")
             data_, labels = next(test_gen_objs[k])
             one_hot_labels = prepare_input_op(labels, len(generator.unique_draw))
             one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()

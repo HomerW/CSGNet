@@ -26,6 +26,8 @@ class VAE(nn.Module):
         self.vocab_size = vocab_size
         self.max_len = max_len
 
+        self.log_sigma = torch.nn.Parameter(torch.full((1,), 0)[0], requires_grad=True)
+
         # encoding
         self.embed = nn.Embedding(self.vocab_size, hidden_dim)
         # self.encode_union = MLP(3*hidden_dim, hidden_dim, hidden_dim)
@@ -135,7 +137,7 @@ class VAE(nn.Module):
         return self.decode(z, x), mu, logvar
 
     # Reconstruction + KL divergence losses
-    def loss_function(self, recon_x, x, mu, logvar, anneal):
+    def loss_function(self, recon_x, x, mu, logvar):
         # returns flattened tree and target node types
         def flatten(node):
             if node["right"] is None and node["left"] is None:
@@ -151,6 +153,7 @@ class VAE(nn.Module):
         # print(torch.argmax(torch.stack(flat_recon_x), dim=1))
 
         CE = F.cross_entropy(torch.stack(flat_recon_x), torch.stack(flat_x), reduction='sum')
+        #CE = gaussian_nll(torch.stack(flat_recon_x), softclip(self.log_sigma, -6), F.one_hot(torch.stack(flat_x), 399)).sum()
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -160,7 +163,12 @@ class VAE(nn.Module):
 
         # KLD *= .01
         # print(CE/KLD)
-        if anneal:
-            return CE + KLD
-        else:
-            return CE
+        return CE + 0.5 * KLD, CE, KLD
+
+def gaussian_nll(mu, log_sigma, x):
+    return 0.5 * torch.pow((x - mu) / log_sigma.exp(), 2) + log_sigma + 0.5 * np.log(2 * np.pi)
+
+def softclip(tensor, min):
+    result_tensor = min + F.softplus(tensor - min)
+
+    return result_tensor

@@ -19,9 +19,9 @@ import torch.optim as optim
 from torch.autograd.variable import Variable
 
 from src.Models.loss import losses_joint
-from src.Models.models2 import Encoder
-from src.Models.models2 import ImitateJoint
-from src.Models.models_cont2 import ParseModelOutput
+from src.Models.models2_mdn import Encoder
+from src.Models.models2_mdn import ImitateJoint
+from src.Models.models_cont import ParseModelOutput
 # from src.Models.models import ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
@@ -78,7 +78,7 @@ max_len = max(dataset_sizes.keys())
 optimizer = optim.Adam(
     [para for para in imitate_net.parameters() if para.requires_grad],
     weight_decay=config.weight_decay,
-    lr=config.lr)
+    lr=0.0001)
 
 reduce_plat = LearningRate(
     optimizer,
@@ -131,11 +131,12 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 outputs = imitate_net([data, one_hot_labels, k])
-                loss_k = imitate_net.loss_function(outputs, labels_cont) / types_prog / config.num_traj
+                loss_k = imitate_net.loss_function(outputs, labels_cont, k) / types_prog / config.num_traj
                 loss_k.backward()
                 loss += loss_k.data
                 del loss_k
 
+        torch.nn.utils.clip_grad_norm_(imitate_net.parameters(), 10)
         optimizer.step()
         train_loss += loss
         print(f"batch {batch_idx} train loss: {loss.cpu().numpy()}")
@@ -152,7 +153,7 @@ for epoch in range(config.epochs):
     correct_programs = 0
     pred_programs = 0
     for batch_idx in range(config.test_size // (config.batch_size)):
-        parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, config.canvas_shape)
+        parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, config.canvas_shape, imitate_net.mdn)
         # parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
         #                   config.canvas_shape)
         for k in dataset_sizes.keys():
@@ -199,5 +200,5 @@ for epoch in range(config.epochs):
     if prev_test_cd > metrics["cd"]:
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
-                   "trained_models/synthetic2.pth")
+                   "trained_models/synthetic2_mdn.pth")
         prev_test_cd = metrics["cd"]

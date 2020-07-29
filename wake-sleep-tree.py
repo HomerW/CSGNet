@@ -32,7 +32,7 @@ inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
 generator_hidden_dim = 256
-generator_latent_dim = 128
+generator_latent_dim = 256
 max_len = 13
 
 """
@@ -43,29 +43,29 @@ def train_generator(generator_net, iter):
     # labels = torch.load(f"wake_sleep_data/inference/{iter}/labels/labels.pt", map_location=device)
     labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
     trees = list(map(label_to_tree, labels))
-    trees = trees[:10000]
+    # trees = trees[:100]
 
     optimizer = optim.Adam(generator_net.parameters(), lr=1e-4)
 
     generator_net.train()
 
+    prev_loss = 1e20
     for epoch in range(100000000):
         train_loss = 0
+        ce_loss = 0
+        kld_loss = 0
         # batch_loss = 0
         acc = 0
         np.random.shuffle(trees)
-        prev_loss = 1e20
         for i, t in enumerate(trees):
             optimizer.zero_grad()
             decoder_out, mu, logvar = generator_net(t)
-            if prev_loss < 5:
-                loss = generator_net.loss_function(decoder_out, t, mu, logvar, True)
-            else:
-                loss = generator_net.loss_function(decoder_out, t, mu, logvar, False)
+            loss, ce, kld = generator_net.loss_function(decoder_out, t, mu, logvar)
             loss.backward()
             # batch_loss += float(loss)
             train_loss += float(loss)
-            prev_loss = float(loss)
+            ce_loss += float(ce)
+            kld_loss += float(kld)
             optimizer.step()
 
             label = torch.argmax(tree_to_label(decoder_out), dim=1)
@@ -80,7 +80,9 @@ def train_generator(generator_net, iter):
 
             del decoder_out, mu, logvar
 
-        print(f"generator epoch {epoch} loss: {train_loss / (len(trees))}, acc: {acc / len(trees)}")
+        print(f"generator epoch {epoch} loss: {train_loss / (len(trees))}, \
+                ce: {ce_loss / (len(trees))}, kld: {kld_loss / (len(trees))}, acc: {acc / len(trees)}")
+        prev_loss = train_loss / (len(trees))
 
         if (epoch + 1) % 10 == 0:
             with torch.no_grad():
@@ -180,7 +182,7 @@ def get_csgnet():
 Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
-    imitate_net = get_csgnet()
+    #imitate_net = get_csgnet()
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size-1, max_len).to(device)
 
     # print("pre loading model")

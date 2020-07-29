@@ -11,6 +11,7 @@ from ..utils.generators.mixed_len_generator import Parser, \
 from typing import List
 from closest_token import closest_token
 from globals import device
+from .mdn import MixtureDensityNetwork
 
 
 class Encoder(nn.Module):
@@ -95,11 +96,13 @@ class ImitateJoint(nn.Module):
         self.dense_fc_1 = nn.Linear(
             in_features=self.hd_sz, out_features=self.hd_sz)
         self.dense_output = nn.Linear(
-            in_features=self.hd_sz, out_features=8+3)
+            in_features=self.hd_sz, out_features=2048)
         self.drop = nn.Dropout(dropout)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
         self.tf = teacher_force
+
+        self.mdn = MixtureDensityNetwork(2048, 3, 10)
 
     def forward(self, x: List):
         """
@@ -233,31 +236,33 @@ class ImitateJoint(nn.Module):
                 hd = self.relu(self.dense_fc_1(self.drop(h[0])))
                 output = self.dense_output(self.drop(hd))
                 type = torch.argmax(output[:, :8], dim=1).float()
-                params = F.relu(output[:, 8:])
+                params = F.relu(self.mdn.sample(output))
                 last_output = np.zeros((batch_size, self.num_draws + 1))
                 for j in range(batch_size):
                     vec = params[j].cpu().numpy().reshape((-1,))
                     ct = closest_token(type[j], vec, self.unique_draw)
                     last_output[j][ct] = 1
                 last_output = torch.from_numpy(last_output).to(device).float()
-                # outputs.append(output)
-                outputs.append(last_output)
+                outputs.append(output)
+                # outputs.append(last_output)
             return outputs
 
         else:
             assert False, "Incorrect mode!!"
 
-    def loss_function(self, outputs, labels):
+    def loss_function(self, outputs, labels, program_len):
         # remove start token from label
         labels = labels[:, 1:, :]
 
         outputs = outputs.permute(1, 2, 0)
-
         type_loss = F.cross_entropy(outputs[:, :8, :], labels[:, :, 0].long())
-        param_loss = F.mse_loss(outputs[:, 8:, :].permute(0, 2, 1), labels[:, :, 1:])
-        # scaling factor (0.01) chosen to make param_loss and type_loss about equal
-        # param_loss *= .01
-        # print(param_loss/type_loss)
+
+        param_loss = 0
+        for i in range(program_len + 1):
+            param_loss += self.mdn.loss(outputs[:, :, i], labels[:, i, 1:]).mean()
+        # scaling factor chosen to make param_loss and type_loss about equal
+        param_loss *= 0.01
+
         return type_loss + param_loss
 
 

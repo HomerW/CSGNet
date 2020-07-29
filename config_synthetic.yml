@@ -4,10 +4,12 @@ comment = "Write some meaningful comments that can be used in future to identify
 model_path = temp_{}
 
 # Whether to load a pretrained model or not
-preload_model = False
+preload_model = True
 
 # path to the pre-trained model
 pretrain_model_path = "trained_models/mix_len_cr_percent_equal_batch_3_13_prop_100_hdsz_2048_batch_2000_optim_adam_lr_0.001_wd_0.0_enocoderdrop_0.0_drop_0.2_step_mix_mode_12.pth"
+
+# pretrain_model_path = "trained_models/synthetic2.pth"
 
 # Proportion of the dataset to be used while training, use 100
 proportion = 100
