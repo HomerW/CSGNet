@@ -174,7 +174,7 @@ def chamfer(images1, images2):
     return distances
 
 
-def image_from_expressions(parser, expressions):
+def image_from_expressions(parser, expressions, perturb_out=None):
     """This take a generic expression as input and returns the final image for
     this. The expressions need not be valid.
     :param parser: Object of the class parseModelOutput
@@ -190,7 +190,16 @@ def image_from_expressions(parser, expressions):
             stack = np.zeros((parser.canvas_shape[0], parser.canvas_shape[1]))
             stacks.append(stack)
             continue
-        parser.sim.generate_stack(program)
+        if perturb_out is not None:
+            new_program = []
+            for token, p in zip(program, perturb_out[:, index]):
+                new_token = {}
+                if token['type'] == 'draw':
+                    token['param'] = [int(x) + delta for x, delta in zip(token['param'], p)]
+                new_program.append(token)
+            parser.sim.generate_stack(new_program)
+        else:
+            parser.sim.generate_stack(program)
         stack = parser.sim.stack_t
         stack = np.stack(stack, axis=0)[-1, 0, :, :]
         stacks.append(stack)

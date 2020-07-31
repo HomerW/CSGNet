@@ -31,7 +31,7 @@ from globals import device
 inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
-generator_hidden_dim = 2048
+generator_hidden_dim = 256
 generator_latent_dim = 20
 max_len = 13
 
@@ -65,9 +65,9 @@ def train_generator(generator_net, iter):
             train_loss += loss.item()
             optimizer.step()
         print(f"generator epoch {epoch} loss: {train_loss / (len(labels) * (labels.shape[1]-1))} \
-                accuracy: {(recon_batch.permute(1, 2, 0).max(dim=1)[1] == batch[:, 1:]).float().sum()/(batch.shape[0]*batch.shape[1])}")
+                accuracy: {(recon_batch.permute(1, 2, 0).max(dim=1)[1] == batch[:, 1:]).float().sum()/(batch.shape[0]*(batch.shape[1]-1))}")
 
-        if (epoch + 100) % 1 == 0:
+        if (epoch + 1) % 100 == 0:
             latents = torch.randn(1, inference_test_size, generator_latent_dim).to(device)
             sample = generator_net.decode(latents, timesteps=labels.shape[1] - 1).cpu().permute(1, 0, 2).max(dim=2)[1][:, :-1].numpy()
             os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/"), exist_ok=True)
@@ -134,7 +134,8 @@ def get_csgnet():
         encoder=encoder_net,
         mode=config.mode,
         num_draws=len(unique_draw),
-        canvas_shape=config.canvas_shape)
+        canvas_shape=config.canvas_shape,
+        teacher_force=True)
     imitate_net = imitate_net.to(device)
 
     print("pre loading model")
@@ -223,5 +224,5 @@ def wake_sleep(iterations):
         # torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
         # torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
-wake_sleep(1)
-#load_generate(0)
+# wake_sleep(1)
+load_generate(0)

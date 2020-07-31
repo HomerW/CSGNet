@@ -9,9 +9,9 @@ import numpy as np
 import torch
 from torch.autograd.variable import Variable
 
-from src.Models.models2 import Encoder
-from src.Models.models2 import ImitateJoint, validity
-from src.Models.models2 import ParseModelOutput
+from src.Models.models_perturb import Encoder
+from src.Models.models_perturb import ImitateJoint, validity
+from src.Models.models_perturb import ParseModelOutput
 from src.utils import read_config
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.train_utils import prepare_input_op, chamfer, beams_parser
@@ -42,7 +42,7 @@ dataset_sizes = {
     11: [370000, 1000 * proportion],
     13: [370000, 1000 * proportion]
 }
-dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
+dataset_sizes = {k: [x // 10 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(data_labels_paths=data_labels_paths,
                               batch_size=config.batch_size,
@@ -53,7 +53,8 @@ imitate_net = ImitateJoint(hd_sz=config.hidden_size,
                            encoder=encoder_net,
                            mode=config.mode,
                            num_draws=len(generator.unique_draw),
-                           canvas_shape=config.canvas_shape)
+                           canvas_shape=config.canvas_shape,
+                           teacher_force=True)
 
 imitate_net.cuda()
 if config.preload_model:
@@ -94,7 +95,7 @@ for k in dataset_sizes.keys():
     test_batch_size = config.batch_size
     total_size += (dataset_sizes[k][1] // test_batch_size) * test_batch_size
 
-for jit in [True, False]:
+for jit in [False]:
     total_CD = 0
     programs_pred[jit] = []
     programs_tar[jit] = []
@@ -110,13 +111,14 @@ for jit in [True, False]:
     for k in dataset_sizes.keys():
         test_batch_size = config.batch_size
         for batch_idx in range(dataset_sizes[k][1] // test_batch_size):
-            print(f"{k}, {batch_idx} / {dataset_sizes[k][1] // test_batch_size}")
-            data_, labels = next(test_gen_objs[k])
-            one_hot_labels = prepare_input_op(labels, len(generator.unique_draw))
-            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
-            data = Variable(torch.from_numpy(data_), volatile=True).cuda()
-            labels = Variable(torch.from_numpy(labels)).cuda()
-            all_beams, next_beams_prob, all_inputs = imitate_net.beam_search([data, one_hot_labels], beam_width, maxx_len)
+            with torch.no_grad():
+                print(f"{k}, {batch_idx} / {dataset_sizes[k][1] // test_batch_size}")
+                data_, labels = next(test_gen_objs[k])
+                one_hot_labels = prepare_input_op(labels, len(generator.unique_draw))
+                one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
+                data = Variable(torch.from_numpy(data_)).cuda()
+                labels = Variable(torch.from_numpy(labels)).cuda()
+                all_beams, next_beams_prob, all_inputs = imitate_net.beam_search([data, one_hot_labels], beam_width, maxx_len)
 
             targ_prog = parser.labels2exps(labels, k)
             beam_labels = beams_parser(all_beams, test_batch_size, beam_width=beam_width)
@@ -125,6 +127,16 @@ for jit in [True, False]:
 
             for i in range(test_batch_size):
                 beam_labels_numpy[i * beam_width: (i + 1) * beam_width, :] = beam_labels[i]
+
+            # get perturbations with forward pass of model
+            bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
+            one_hot_labels = prepare_input_op(bl, len(generator.unique_draw))
+            one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
+            perturb_out = []
+            for i in range(beam_width):
+                perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
+                perturb_out.append(perturb)
+            perturb_out = torch.cat(perturb_out, dim=1)
 
             # find expression from these predicted beam labels
             expressions = [""] * test_batch_size * beam_width
@@ -141,7 +153,7 @@ for jit in [True, False]:
             for index, exp in enumerate(expressions):
                 program = parser.Parser.parse(exp)
                 if validity(program, len(program), len(program) - 1):
-                    stack = parser.expression2stack([exp])
+                    stack = parser.expression2stack([exp], perturb_out)
                     pred_images.append(stack[-1, -1, 0, :, :])
                 else:
                     pred_images.append(np.zeros(config.canvas_shape))

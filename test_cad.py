@@ -37,7 +37,8 @@ imitate_net = ImitateJoint(
     encoder=encoder_net,
     mode=config.mode,
     num_draws=len(unique_draw),
-    canvas_shape=config.canvas_shape)
+    canvas_shape=config.canvas_shape,
+    teacher_force=True)
 
 imitate_net.cuda()
 imitate_net.epsilon = 0
@@ -85,30 +86,31 @@ for p in paths:
     distances = 0
     pred_expressions = []
     for i in range(test_size // config.batch_size):
-        data_ = next(test_gen)
-        labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
-        one_hot_labels = prepare_input_op(labels, len(unique_draw))
-        one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
-        data = Variable(torch.from_numpy(data_), volatile=True).cuda()
-        outputs, samples = imitate_net([data, one_hot_labels, max_len])
-        R, _, pred_images, expressions = reinforce.generate_rewards(
-                                                                    samples,
-                                                                    data_,
-                                                                    time_steps=max_len,
-                                                                    stack_size=max_len // 2 + 1,
-                                                                    power=1,
-                                                                    reward="iou")
-        RS_iou += np.mean(R) / (test_size // config.batch_size)
+        with torch.no_grad():
+            data_ = next(test_gen)
+            labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
+            one_hot_labels = prepare_input_op(labels, len(unique_draw))
+            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
+            data = Variable(torch.from_numpy(data_)).cuda()
+            outputs, samples = imitate_net([data, one_hot_labels, max_len])
+            R, _, pred_images, expressions = reinforce.generate_rewards(
+                                                                        samples,
+                                                                        data_,
+                                                                        time_steps=max_len,
+                                                                        stack_size=max_len // 2 + 1,
+                                                                        power=1,
+                                                                        reward="iou")
+            RS_iou += np.mean(R) / (test_size // config.batch_size)
 
-        R, _, _, expressions, distance = reinforce.generate_rewards(samples,
-                                                                    data_,
-                                                                    time_steps=max_len,
-                                                                    stack_size=max_len // 2 + 1,
-                                                                    power=power,
-                                                                    reward="chamfer")
+            R, _, _, expressions, distance = reinforce.generate_rewards(samples,
+                                                                        data_,
+                                                                        time_steps=max_len,
+                                                                        stack_size=max_len // 2 + 1,
+                                                                        power=power,
+                                                                        reward="chamfer")
 
-        RS_chamfer += np.mean(R) / (test_size // config.batch_size)
-        distances += np.mean(distance) / (test_size // config.batch_size)
+            RS_chamfer += np.mean(R) / (test_size // config.batch_size)
+            distances += np.mean(distance) / (test_size // config.batch_size)
 
         for index, p in enumerate(expressions):
             expressions[index] = p.split("$")[0]

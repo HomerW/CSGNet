@@ -9,11 +9,14 @@ import os
 import json
 import numpy as np
 import torch
-from src.Models.models import ParseModelOutput
+from src.Models.models_perturb import ParseModelOutput
+# from src.Models.models import ParseModelOutput
 from src.utils import read_config
 import sys
-from src.Models.models import ImitateJoint
-from src.Models.models import Encoder
+from src.Models.models_perturb import ImitateJoint
+from src.Models.models_perturb import Encoder
+# from src.Models.models import ImitateJoint
+# from src.Models.models import Encoder
 from src.utils.generators.shapenet_generater import Generator
 from src.utils.reinforce import Reinforce
 from src.utils.train_utils import prepare_input_op, beams_parser, validity, image_from_expressions
@@ -45,17 +48,17 @@ imitate_net = ImitateJoint(
     encoder=encoder_net,
     mode=config.mode,
     num_draws=len(unique_draw),
-    canvas_shape=config.canvas_shape)
+    canvas_shape=config.canvas_shape,
+    teacher_force=True)
 imitate_net.cuda()
 imitate_net.epsilon = config.eps
 
 max_len = 13
-beam_width = 10
+beam_width = 1
 config.test_size = 3000
 imitate_net.eval()
 imitate_net.epsilon = 0
-# paths = [config.pretrain_modelpath]
-paths = ["trained_models/imitate-22.pth"]
+paths = [config.pretrain_modelpath]
 parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
 for p in paths:
@@ -106,67 +109,79 @@ for p in paths:
             one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).cuda()
             data = Variable(torch.from_numpy(data_)).cuda()
 
-        all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
-            [data, one_hot_labels], beam_width, max_len)
+            all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
+                [data, one_hot_labels], beam_width, max_len)
 
-        beam_labels = beams_parser(
-            all_beams, data_.shape[1], beam_width=beam_width)
+            beam_labels = beams_parser(
+                all_beams, data_.shape[1], beam_width=beam_width)
 
-        beam_labels_numpy = np.zeros(
-            (config.batch_size * beam_width, max_len), dtype=np.int32)
-        Target_images.append(data_[-1, :, 0, :, :])
-        for i in range(data_.shape[1]):
-            beam_labels_numpy[i * beam_width:(
-                i + 1) * beam_width, :] = beam_labels[i]
+            beam_labels_numpy = np.zeros(
+                (config.batch_size * beam_width, max_len), dtype=np.int32)
+            Target_images.append(data_[-1, :, 0, :, :])
+            for i in range(data_.shape[1]):
+                beam_labels_numpy[i * beam_width:(
+                    i + 1) * beam_width, :] = beam_labels[i]
 
-        # find expression from these predicted beam labels
-        expressions = [""] * config.batch_size * beam_width
-        for i in range(config.batch_size * beam_width):
-            for j in range(max_len):
-                expressions[i] += unique_draw[beam_labels_numpy[i, j]]
-        for index, prog in enumerate(expressions):
-            expressions[index] = prog.split("$")[0]
+            # get perturbations with forward pass of model
+            bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
+            one_hot_labels = prepare_input_op(bl, len(unique_draw))
+            one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
+            perturb_out = []
+            for i in range(beam_width):
+                perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
+                perturb_out.append(perturb)
+            perturb_out = torch.cat(perturb_out, dim=1)
 
-        pred_expressions += expressions
-        predicted_images = image_from_expressions(parser, expressions)
-        target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-        target_images_new = np.repeat(
-            target_images, axis=0, repeats=beam_width)
 
-        beam_R = np.sum(np.logical_and(target_images_new, predicted_images),
-                        (1, 2)) / np.sum(np.logical_or(target_images_new, predicted_images), (1, 2))
+            # find expression from these predicted beam labels
+            expressions = [""] * config.batch_size * beam_width
+            for i in range(config.batch_size * beam_width):
+                for j in range(max_len):
+                    expressions[i] += unique_draw[beam_labels_numpy[i, j]]
+            for index, prog in enumerate(expressions):
+                expressions[index] = prog.split("$")[0]
 
-        R = np.zeros((config.batch_size, 1))
-        for r in range(config.batch_size):
-            R[r, 0] = max(beam_R[r * beam_width:(r + 1) * beam_width])
+            pred_expressions += expressions
+            predicted_images = image_from_expressions(parser, expressions, perturb_out)
+            #predicted_images = image_from_expressions(parser, expressions)
+            target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+            target_images_new = np.repeat(
+                target_images, axis=0, repeats=beam_width)
 
-        Rs += np.mean(R)
+            beam_R = np.sum(np.logical_and(target_images_new, predicted_images),
+                            (1, 2)) / np.sum(np.logical_or(target_images_new, predicted_images), (1, 2))
 
-        beam_CD = chamfer(target_images_new, predicted_images)
+            R = np.zeros((config.batch_size, 1))
+            for r in range(config.batch_size):
+                R[r, 0] = max(beam_R[r * beam_width:(r + 1) * beam_width])
 
-        CD = np.zeros((config.batch_size, 1))
-        for r in range(config.batch_size):
-            CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
+            Rs += np.mean(R)
 
-        CDs += np.mean(CD)
+            beam_CD = chamfer(target_images_new, predicted_images)
 
-        if SAVE_VIZ:
-            for j in range(0, config.batch_size):
-                f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
-                a[0].imshow(data_[-1, j, 0, :, :], cmap="Greys_r")
-                a[0].axis("off")
-                a[0].set_title("target")
-                for i in range(1, beam_width + 1):
-                    a[i].imshow(
-                        predicted_images[j * beam_width + i - 1],
-                        cmap="Greys_r")
-                    a[i].set_title("{}".format(i))
-                    a[i].axis("off")
-                plt.savefig(
-                    image_path +
-                    "{}.png".format(batch_idx * config.batch_size + j),
-                    transparent=0)
-                plt.close("all")
+            CD = np.zeros((config.batch_size, 1))
+            for r in range(config.batch_size):
+                CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
+
+            CDs += np.mean(CD)
+
+            if SAVE_VIZ:
+                for j in range(0, config.batch_size):
+                    f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
+                    a[0].imshow(data_[-1, j, 0, :, :], cmap="Greys_r")
+                    a[0].axis("off")
+                    a[0].set_title("target")
+                    for i in range(1, beam_width + 1):
+                        a[i].imshow(
+                            predicted_images[j * beam_width + i - 1],
+                            cmap="Greys_r")
+                        a[i].set_title("{}".format(i))
+                        a[i].axis("off")
+                    plt.savefig(
+                        image_path +
+                        "{}.png".format(batch_idx * config.batch_size + j),
+                        transparent=0)
+                    plt.close("all")
 
     print(
         "average chamfer distance: {}".format(

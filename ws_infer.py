@@ -7,8 +7,8 @@ from torchvision.utils import save_image
 import numpy as np
 from torch.autograd.variable import Variable
 from src.Models.loss import losses_joint
-from src.Models.models import Encoder
-from src.Models.models import ImitateJoint, ParseModelOutput
+from src.Models.models_perturb import Encoder
+from src.Models.models_perturb import ImitateJoint, ParseModelOutput
 from src.utils import read_config
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, beams_parser, validity, image_from_expressions, stack_from_expressions
@@ -103,6 +103,16 @@ def infer_programs(inference_net, path):
             beam_labels_numpy[i * beam_width:(
                 i + 1) * beam_width, :] = beam_labels[i]
 
+        # get perturbations with forward pass of model
+        bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
+        one_hot_labels = prepare_input_op(bl, len(unique_draw))
+        one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
+        perturb_out = []
+        for i in range(beam_width):
+            perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
+            perturb_out.append(perturb)
+        perturb_out = torch.cat(perturb_out, dim=1)
+
         # find expression from these predicted beam labels
         expressions = [""] * config.batch_size * beam_width
         for i in range(config.batch_size * beam_width):
@@ -112,7 +122,7 @@ def infer_programs(inference_net, path):
             expressions[index] = prog.split("$")[0]
 
         pred_expressions += expressions
-        predicted_images = image_from_expressions(parser, expressions)
+        predicted_images = image_from_expressions(parser, expressions, perturb_out)
         target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
         target_images_new = np.repeat(
             target_images, axis=0, repeats=beam_width)

@@ -105,105 +105,103 @@ class ImitateJoint(nn.Module):
         :param x: Has different meaning with different mode of training
         :return:
         """
+        '''
+        Variable length training. This mode runs for one
+        more than the length of program for producing stop symbol. Note
+        that there is no padding as is done in traditional RNN for
+        variable length programs. This is done mainly because of computational
+        efficiency of forward pass, that is, each batch contains only
+        programs of same length and losses from all batches of
+        different time-lengths are combined to compute gradient and
+        update in the network. This ensures that every update of the
+        network has equal contribution coming from programs of different lengths.
+        Training is done using the script train_synthetic.py
+        '''
+        data, input_op, program_len = x
 
-        if self.mode == 1:
-            '''
-            Variable length training. This mode runs for one
-            more than the length of program for producing stop symbol. Note
-            that there is no padding as is done in traditional RNN for
-            variable length programs. This is done mainly because of computational
-            efficiency of forward pass, that is, each batch contains only
-            programs of same length and losses from all batches of
-            different time-lengths are combined to compute gradient and
-            update in the network. This ensures that every update of the
-            network has equal contribution coming from programs of different lengths.
-            Training is done using the script train_synthetic.py
-            '''
-            data, input_op, program_len = x
-
-            assert data.size()[0] == program_len + 1, "Incorrect stack size!!"
-            batch_size = data.size()[1]
-            h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
-            x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
-            x_f = x_f.view(1, batch_size, self.in_sz)
-            if not self.tf:
-                outputs = []
-                for timestep in range(0, program_len + 1):
-                    # X_f is always input to the RNN at every time step
-                    # along with previous predicted label
-                    input_op_rnn = self.relu(
-                        self.dense_input_op(input_op[:, timestep, :]))
-                    input_op_rnn = input_op_rnn.view(1, batch_size,
-                                                     self.input_op_sz)
-                    #input_op_rnn = torch.zeros((1, batch_size, self.input_op_sz)).cuda()
-                    input = torch.cat((self.drop(x_f), input_op_rnn), 2)
-                    h, _ = self.rnn(input, h)
-                    hd = self.relu(self.dense_fc_1(self.drop(h[0])))
-                    output = self.logsoftmax(self.dense_output(self.drop(hd)))
-                    outputs.append(output)
-                return outputs
-            else:
-                # remove stop token for input to decoder
-                input_op_rnn = self.relu(self.dense_input_op(input_op))[:, :-1, :].permute(1, 0, 2)
-                # input_op_rnn = torch.zeros((program_len+1, batch_size, self.input_op_sz)).cuda()
-                x_f = x_f.repeat(program_len+1, 1, 1)
-                input = torch.cat((self.drop(x_f), input_op_rnn), 2)
-                output, h = self.rnn(input, h)
-                output = self.relu(self.dense_fc_1(self.drop(output)))
-                token_logits = self.dense_output(self.drop(output))
-                perturb_out = self.dense_perturb(torch.cat([token_logits, self.drop(output)], dim=2))
-                token_out = self.tf_logsoftmax(token_logits)
-                return token_out, perturb_out
-
-        elif self.mode == 2:
-            '''Train variable length RL'''
-            # program length in this case is the maximum time step that RNN runs
-            data, input_op, program_len = x
-            batch_size = data.size()[1]
-            h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
-            x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
-            x_f = x_f.view(1, batch_size, self.in_sz)
+        # assert data.size()[0] == program_len + 1, "Incorrect stack size!!"
+        batch_size = data.size()[1]
+        h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
+        x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
+        x_f = x_f.view(1, batch_size, self.in_sz)
+        if not self.tf:
             outputs = []
-            samples = []
-            temp_input_op = input_op[:, 0, :]
-            for timestep in range(0, program_len):
-                # X_f is the input to the RNN at every time step along with previous
-                # predicted label
-                input_op_rnn = self.relu(self.dense_input_op(temp_input_op))
+            for timestep in range(0, program_len + 1):
+                # X_f is always input to the RNN at every time step
+                # along with previous predicted label
+                input_op_rnn = self.relu(
+                    self.dense_input_op(input_op[:, timestep, :]))
                 input_op_rnn = input_op_rnn.view(1, batch_size,
                                                  self.input_op_sz)
-                input = torch.cat((x_f, input_op_rnn), 2)
+                #input_op_rnn = torch.zeros((1, batch_size, self.input_op_sz)).cuda()
+                input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                 h, _ = self.rnn(input, h)
                 hd = self.relu(self.dense_fc_1(self.drop(h[0])))
-                dense_output = self.dense_output(self.drop(hd))
-                output = self.logsoftmax(dense_output)
-                # output for loss, these are log-probabs
+                output = self.logsoftmax(self.dense_output(self.drop(hd)))
                 outputs.append(output)
-
-                output_probs = self.softmax(dense_output)
-                # Get samples from output probabs based on epsilon greedy way
-                # Epsilon will be reduced to 0 gradually following some schedule
-                if np.random.rand() < self.epsilon:
-                    # This is during training
-                    sample = torch.multinomial(output_probs, 1)
-                else:
-                    # This is during testing
-                    sample = torch.max(output_probs, 1)[1].view(
-                        batch_size, 1)
-
-                # Stopping the gradient to flow backward from samples
-                sample = sample.detach()
-                samples.append(sample)
-
-                # Create next input to the RNN from the sampled instructions
-                arr = Variable(
-                    torch.zeros(batch_size, self.num_draws + 1).scatter_(
-                        1, sample.data.cpu(), 1.0)).cuda()
-                arr = arr.detach()
-                temp_input_op = arr
-            return [outputs, samples]
+            return outputs
         else:
-            assert False, "Incorrect mode!!"
+            # remove stop token for input to decoder
+            input_op_rnn = self.relu(self.dense_input_op(input_op))[:, :-1, :].permute(1, 0, 2)
+            # input_op_rnn = torch.zeros((program_len+1, batch_size, self.input_op_sz)).cuda()
+            x_f = x_f.repeat(program_len+1, 1, 1)
+            input = torch.cat((self.drop(x_f), input_op_rnn), 2)
+            output, h = self.rnn(input, h)
+            output = self.relu(self.dense_fc_1(self.drop(output)))
+            token_logits = self.dense_output(self.drop(output))
+            perturb_out = self.dense_perturb(torch.cat([token_logits, self.drop(output)], dim=2))
+            token_out = self.tf_logsoftmax(token_logits)
+            return token_out, perturb_out
+
+        # elif self.mode == 2:
+        #     '''Train variable length RL'''
+        #     # program length in this case is the maximum time step that RNN runs
+        #     data, input_op, program_len = x
+        #     batch_size = data.size()[1]
+        #     h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
+        #     x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
+        #     x_f = x_f.view(1, batch_size, self.in_sz)
+        #     outputs = []
+        #     samples = []
+        #     temp_input_op = input_op[:, 0, :]
+        #     for timestep in range(0, program_len):
+        #         # X_f is the input to the RNN at every time step along with previous
+        #         # predicted label
+        #         input_op_rnn = self.relu(self.dense_input_op(temp_input_op))
+        #         input_op_rnn = input_op_rnn.view(1, batch_size,
+        #                                          self.input_op_sz)
+        #         input = torch.cat((x_f, input_op_rnn), 2)
+        #         h, _ = self.rnn(input, h)
+        #         hd = self.relu(self.dense_fc_1(self.drop(h[0])))
+        #         dense_output = self.dense_output(self.drop(hd))
+        #         output = self.logsoftmax(dense_output)
+        #         # output for loss, these are log-probabs
+        #         outputs.append(output)
+        #
+        #         output_probs = self.softmax(dense_output)
+        #         # Get samples from output probabs based on epsilon greedy way
+        #         # Epsilon will be reduced to 0 gradually following some schedule
+        #         if np.random.rand() < self.epsilon:
+        #             # This is during training
+        #             sample = torch.multinomial(output_probs, 1)
+        #         else:
+        #             # This is during testing
+        #             sample = torch.max(output_probs, 1)[1].view(
+        #                 batch_size, 1)
+        #
+        #         # Stopping the gradient to flow backward from samples
+        #         sample = sample.detach()
+        #         samples.append(sample)
+        #
+        #         # Create next input to the RNN from the sampled instructions
+        #         arr = Variable(
+        #             torch.zeros(batch_size, self.num_draws + 1).scatter_(
+        #                 1, sample.data.cpu(), 1.0)).cuda()
+        #         arr = arr.detach()
+        #         temp_input_op = arr
+        #     return [outputs, samples]
+        # else:
+        #     assert False, "Incorrect mode!!"
 
     def test(self, data: List):
         """
@@ -303,8 +301,7 @@ class ImitateJoint(nn.Module):
             else:
                 outputs = torch.cat(outputs, 1)
 
-            next_beams_index = torch.topk(outputs, w, 1, sorted=True)[1]
-            next_beams_prob = torch.topk(outputs, w, 1, sorted=True)[0]
+            next_beams_prob, next_beams_index = torch.topk(outputs, w, 1, sorted=True)
             # print (next_beams_prob)
             current_beams = {
                 "parent":
@@ -440,7 +437,7 @@ class ParseModelOutput:
             stacks = np.stack(stacks, 1).astype(dtype=np.bool)
         return stacks, correct_programs, expressions
 
-    def expression2stack(self, expressions: List):
+    def expression2stack(self, expressions: List, perturb_out=None):
         """Assuming all the expression are correct and coming from
         groundtruth labels. Helpful in visualization of programs
         :param expressions: List, each element an expression of program
@@ -448,7 +445,16 @@ class ParseModelOutput:
         stacks = []
         for index, exp in enumerate(expressions):
             program = self.Parser.parse(exp)
-            self.sim.generate_stack(program)
+            if perturb_out is not None:
+                new_program = []
+                for token, p in zip(program, perturb_out[:, index]):
+                    new_token = {}
+                    if token['type'] == 'draw':
+                        token['param'] = [int(x) + delta for x, delta in zip(token['param'], p)]
+                    new_program.append(token)
+                self.sim.generate_stack(new_program)
+            else:
+                self.sim.generate_stack(program)
             stack = self.sim.stack_t
             stack = np.stack(stack, axis=0)
             stacks.append(stack)

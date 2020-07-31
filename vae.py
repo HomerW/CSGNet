@@ -27,10 +27,11 @@ class VAE(nn.Module):
         self.encode_gru = nn.GRU(hidden_dim, hidden_dim)
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
-        self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
-        #self.decode_gru = nn.GRU(latent_dim, hidden_dim)
+        #self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
+        self.decode_gru = nn.GRU(latent_dim, hidden_dim)
         self.dense_1 = nn.Linear(hidden_dim, hidden_dim)
-        self.dense_2 = nn.Linear(hidden_dim, vocab_size)
+        self.dense_output = nn.Linear(hidden_dim, vocab_size)
+        self.dense_perturb = nn.Linear(hidden_dim+vocab_size, 3)
         self.initial_encoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
         self.initial_decoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
 
@@ -47,8 +48,9 @@ class VAE(nn.Module):
     def decode(self, z, decoder_input=None, timesteps=None):
         init_state = self.initial_decoder_state.repeat(1, z.shape[1], 1)
         output, h = self.decode_gru(z.repeat(timesteps, 1, 1), init_state)
-        return self.dense_2(self.relu(self.dense_1(output)))
-        # training
+        output = self.relu(self.dense_1(output))
+        return self.dense_output(output), self.dense_perturb(output)
+        #training
         # batch_size = z.shape[1]
         # if decoder_input is not None:
         #     # concatentate latent code with input sequence
