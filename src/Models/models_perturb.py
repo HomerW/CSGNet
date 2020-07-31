@@ -93,7 +93,7 @@ class ImitateJoint(nn.Module):
         self.dense_output = nn.Linear(
             in_features=self.hd_sz, out_features=(self.num_draws))
         self.dense_perturb = nn.Linear(
-            in_features=self.hd_sz, out_features=3)
+            in_features=self.hd_sz+self.num_draws, out_features=3)
         self.drop = nn.Dropout(dropout)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
@@ -150,8 +150,9 @@ class ImitateJoint(nn.Module):
                 input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                 output, h = self.rnn(input, h)
                 output = self.relu(self.dense_fc_1(self.drop(output)))
-                token_out = self.tf_logsoftmax(self.dense_output(self.drop(output)))
-                perturb_out = self.dense_perturb(self.drop(output))
+                token_logits = self.dense_output(self.drop(output))
+                perturb_out = self.dense_perturb(torch.cat([token_logits, self.drop(output)], dim=2))
+                token_out = self.tf_logsoftmax(token_logits)
                 return token_out, perturb_out
 
         elif self.mode == 2:
@@ -231,8 +232,9 @@ class ImitateJoint(nn.Module):
                 input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                 h, _ = self.rnn(input, h)
                 hd = self.relu(self.dense_fc_1(self.drop(h[0])))
-                output = self.logsoftmax(self.dense_output(self.drop(hd)))
-                perturb_out = self.dense_perturb(self.drop(hd))
+                output_logits = self.dense_output(self.drop(hd))
+                perturb_out = self.dense_perturb(torch.cat([output_logits, self.drop(hd)], dim=1))
+                output = self.logsoftmax(output_logits)
                 perturb_outputs.append(perturb_out)
                 next_input_op = torch.max(output, 1)[1].view(batch_size, 1)
                 arr = Variable(

@@ -31,7 +31,7 @@ from globals import device
 inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
-generator_hidden_dim = 256
+generator_hidden_dim = 2048
 generator_latent_dim = 20
 max_len = 13
 
@@ -60,16 +60,14 @@ def train_generator(generator_net, iter):
             batch = torch.from_numpy(labels[i:i+batch_size]).long().to(device)
             optimizer.zero_grad()
             recon_batch, mu, logvar = generator_net(batch)
-            # remove start token for decoder labels
-            batch = batch[:, 1:]
             loss = generator_net.loss_function(recon_batch, batch, mu, logvar)
             loss.backward()
             train_loss += loss.item()
             optimizer.step()
         print(f"generator epoch {epoch} loss: {train_loss / (len(labels) * (labels.shape[1]-1))} \
-                accuracy: {(recon_batch.permute(1, 2, 0).max(dim=1)[1] == batch).float().sum()/(batch.shape[0]*batch.shape[1])}")
+                accuracy: {(recon_batch.permute(1, 2, 0).max(dim=1)[1] == batch[:, 1:]).float().sum()/(batch.shape[0]*batch.shape[1])}")
 
-        if (epoch + 1) % 100 == 0:
+        if (epoch + 100) % 1 == 0:
             latents = torch.randn(1, inference_test_size, generator_latent_dim).to(device)
             sample = generator_net.decode(latents, timesteps=labels.shape[1] - 1).cpu().permute(1, 0, 2).max(dim=2)[1][:, :-1].numpy()
             os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/"), exist_ok=True)
@@ -193,7 +191,7 @@ def load_infer(iter):
 Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
-    imitate_net = get_csgnet()
+    # imitate_net = get_csgnet()
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size).to(device)
 
     # print("pre loading model")
@@ -225,5 +223,5 @@ def wake_sleep(iterations):
         # torch.save(imitate_net.state_dict(), f"trained_models/imitate-{i}.pth")
         # torch.save(generator_net.state_dict(), f"trained_models/generator-{i}.pth")
 
-# wake_sleep(1)
-load_generate(0)
+wake_sleep(1)
+#load_generate(0)

@@ -60,7 +60,7 @@ def train_generator(generator_net, iter):
         for i, t in enumerate(trees):
             optimizer.zero_grad()
             decoder_out, mu, logvar = generator_net(t)
-            loss, ce, kld = generator_net.loss_function(decoder_out, t, mu, logvar)
+            loss, ce, kld = generator_net.loss_function(decoder_out, t, mu, logvar, min(1, 0.1 * (epoch + 1)))
             loss.backward()
             # batch_loss += float(loss)
             train_loss += float(loss)

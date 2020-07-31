@@ -21,20 +21,22 @@ class VAE(nn.Module):
     def __init__(self, hidden_dim, latent_dim, vocab_size):
         super(VAE, self).__init__()
 
+        self.relu = nn.ReLU()
         self.encode_embed = nn.Embedding(vocab_size, hidden_dim)
         self.decode_embed = nn.Embedding(vocab_size, hidden_dim)
         self.encode_gru = nn.GRU(hidden_dim, hidden_dim)
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
-        # self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
-        self.decode_gru = nn.GRU(latent_dim, hidden_dim)
-        self.dense = nn.Linear(hidden_dim, vocab_size)
+        self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
+        #self.decode_gru = nn.GRU(latent_dim, hidden_dim)
+        self.dense_1 = nn.Linear(hidden_dim, hidden_dim)
+        self.dense_2 = nn.Linear(hidden_dim, vocab_size)
         self.initial_encoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
         self.initial_decoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
 
     def encode(self, encoder_input):
         init_state = self.initial_encoder_state.repeat(1, encoder_input.shape[1], 1)
-        _, h = self.encode_gru(self.encode_embed(encoder_input), init_state)
+        _, h = self.encode_gru(self.relu(self.encode_embed(encoder_input)), init_state)
         return self.encode_mu(h), self.encode_logvar(h)
 
     def reparameterize(self, mu, logvar):
@@ -45,31 +47,31 @@ class VAE(nn.Module):
     def decode(self, z, decoder_input=None, timesteps=None):
         init_state = self.initial_decoder_state.repeat(1, z.shape[1], 1)
         output, h = self.decode_gru(z.repeat(timesteps, 1, 1), init_state)
-        return self.dense(output)
+        return self.dense_2(self.relu(self.dense_1(output)))
         # training
+        # batch_size = z.shape[1]
         # if decoder_input is not None:
         #     # concatentate latent code with input sequence
-        #     comb_input = torch.cat([z.repeat(decoder_input.shape[0], 1, 1), self.decode_embed(decoder_input)], 2)
-        #     init_state = self.initial_decoder_state.repeat(1, decoder_input.shape[1], 1)
+        #     comb_input = torch.cat([z.repeat(timesteps, 1, 1), self.relu(self.decode_embed(decoder_input))], 2)
+        #     init_state = self.initial_decoder_state.repeat(1, batch_size, 1)
         #     output, h = self.decode_gru(comb_input, init_state)
-        #     return self.dense(output)
+        #     return self.dense_2(self.relu(self.dense_1(output)))
         # # sampling
         # else:
-        #     # start with just stop token (399)
-        #     stop_seq = self.decode_embed(torch.full((1, z.shape[0]), 399, dtype=torch.long).to(device).long())
-        #     z_seq = torch.reshape(z, (1, z.shape[0], z.shape[1]))
-        #     # concatentate latent code with token
-        #     init_seq = torch.cat([z_seq, stop_seq], 2)
-        #     init_state = self.initial_decoder_state.repeat(1, z.shape[0], 1)
+        #     z_seq = torch.reshape(z, (1, batch_size, z.shape[2]))
+        #     # initial token is the start/stop token (399)
+        #     output_token = torch.full((1, batch_size), 399, dtype=torch.long).to(device).long()
+        #     h = self.initial_decoder_state.repeat(1, batch_size, 1)
         #
-        #     output, h = self.decode_gru(init_seq, init_state)
-        #     prev_output = self.decode_embed(torch.argmax(self.dense(output), dim=2))
-        #
+        #     output_list = []
         #     # loop through sequence using decoded output (plus latent code) and hidden state as next input
         #     for _ in range(timesteps-1):
-        #         output, h = self.decode_gru(torch.cat([z_seq, prev_output[-1:]], 2), h)
-        #         prev_output = torch.cat([prev_output, self.decode_embed(torch.argmax(self.dense(output), dim=2))], 0)
-        #     return self.dense(prev_output)
+        #         in_seq = self.relu(self.decode_embed(output_token)).view(1, batch_size, -1)
+        #         output, h = self.decode_gru(torch.cat([z_seq, in_seq], 2), h)
+        #         output = self.dense_2(self.relu(self.dense_1(output[0])))
+        #         output_list.append(output)
+        #         output_token = torch.argmax(output, dim=1)
+        #     return torch.stack(output_list)
 
     def forward(self, x):
         # shape of x should be (timesteps, batch_size)
@@ -82,6 +84,8 @@ class VAE(nn.Module):
 
     # Reconstruction + KL divergence losses summed over all elements and batch
     def loss_function(self, recon_x, x, mu, logvar):
+        # remove start token from labels
+        x = x[:, 1:]
         # for cross entropy output needs to be batch_size, features, timesteps)
         recon_x = recon_x.permute(1, 2, 0)
         BCE = F.cross_entropy(recon_x, x, reduction='sum')

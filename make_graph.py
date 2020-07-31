@@ -10,16 +10,16 @@ with open("disc-cd.txt") as file:
     disc_cds = file.readlines()
 disc_cds = [float(x.strip()) for x in disc_cds]
 
-disc_cds = disc_cds[:76]
+disc_cds = disc_cds[:120]
 
 ax.set_ylabel("chamfer distance")
 ax.set_xlabel("epoch")
-ax.set_title("discrete and continuous inference net chamfer distance")
+ax.set_title("discrete and continuous inference net chamfer distance on perturbed data")
 
-ax.plot(range(76), cont_cds, 'r', label="continuous")
-ax.plot(range(76), disc_cds, 'b', label="discrete")
+ax.plot(range(120), cont_cds, 'r', label="discrete + delta")
+ax.plot(range(120), disc_cds, 'b', label="discrete")
 ax.legend()
-plt.savefig("cd_graph2.png")
+plt.savefig("cd_graph3.png")
 
 # regular_fid = [
 #  0.980387559465866,

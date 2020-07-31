@@ -137,7 +137,7 @@ class VAE(nn.Module):
         return self.decode(z, x), mu, logvar
 
     # Reconstruction + KL divergence losses
-    def loss_function(self, recon_x, x, mu, logvar):
+    def loss_function(self, recon_x, x, mu, logvar, beta):
         # returns flattened tree and target node types
         def flatten(node):
             if node["right"] is None and node["left"] is None:
@@ -163,7 +163,7 @@ class VAE(nn.Module):
 
         # KLD *= .01
         # print(CE/KLD)
-        return CE + 0.5 * KLD, CE, KLD
+        return CE + beta * KLD, CE, KLD
 
 def gaussian_nll(mu, log_sigma, x):
     return 0.5 * torch.pow((x - mu) / log_sigma.exp(), 2) + log_sigma + 0.5 * np.log(2 * np.pi)

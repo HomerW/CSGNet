@@ -227,7 +227,7 @@ for epoch in range(config.epochs):
     test_loss_p = loss_p.data.cpu().numpy() / (config.test_size //
                                              (config.batch_size))
 
-    # reduce_plat.reduce_on_plateu(metrics["cd"])
+    reduce_plat.reduce_on_plateu(metrics["cd"])
     print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}, test_acc: {}, token_loss: {}, perturb_loss: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
                                       metrics["iou"], metrics["cd"], test_loss, acc, test_loss_p, test_loss_t))
