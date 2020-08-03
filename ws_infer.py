@@ -32,7 +32,6 @@ beam_width = 10
 Infer programs on cad dataset
 """
 def infer_programs(inference_net, path):
-    refine = False
     save_viz = False
 
     config = read_config.Config("config_cad.yml")
@@ -53,16 +52,13 @@ def infer_programs(inference_net, path):
                               config.canvas_shape)
     pred_expressions = []
     pred_labels = np.zeros((config.train_size, max_len))
+    pred_perturbs = np.zeros((config.train_size, max_len, 3))
     image_path = f"{path}/images/"
-    expressions_path = f"{path}/expressions/"
     results_path = f"{path}/results/"
     labels_path = f"{path}/labels/"
-    tweak_expressions_path = f"{path}/tweak/expressions/"
 
     os.makedirs(os.path.dirname(image_path), exist_ok=True)
-    os.makedirs(os.path.dirname(expressions_path), exist_ok=True)
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
-    os.makedirs(os.path.dirname(tweak_expressions_path), exist_ok=True)
     os.makedirs(os.path.dirname(labels_path), exist_ok=True)
     os.makedirs(os.path.dirname(labels_path+"val/"), exist_ok=True)
 
@@ -90,144 +86,110 @@ def infer_programs(inference_net, path):
             one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
             data = Variable(torch.from_numpy(data_)).to(device)
 
-        all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
-            [data, one_hot_labels], beam_width, max_len)
+            all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
+                [data, one_hot_labels], beam_width, max_len)
 
-        beam_labels = beams_parser(
-            all_beams, data_.shape[1], beam_width=beam_width)
+            beam_labels = beams_parser(
+                all_beams, data_.shape[1], beam_width=beam_width)
 
-        beam_labels_numpy = np.zeros(
-            (config.batch_size * beam_width, max_len), dtype=np.int32)
-        Target_images.append(data_[-1, :, 0, :, :])
-        for i in range(data_.shape[1]):
-            beam_labels_numpy[i * beam_width:(
-                i + 1) * beam_width, :] = beam_labels[i]
+            beam_labels_numpy = np.zeros(
+                (config.batch_size * beam_width, max_len), dtype=np.int32)
+            Target_images.append(data_[-1, :, 0, :, :])
+            for i in range(data_.shape[1]):
+                beam_labels_numpy[i * beam_width:(
+                    i + 1) * beam_width, :] = beam_labels[i]
 
-        # get perturbations with forward pass of model
-        bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
-        one_hot_labels = prepare_input_op(bl, len(unique_draw))
-        one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
-        perturb_out = []
-        for i in range(beam_width):
-            perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
-            perturb_out.append(perturb)
-        perturb_out = torch.cat(perturb_out, dim=1)
+            # get perturbations with forward pass of model
+            bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
+            one_hot_labels = prepare_input_op(bl, len(unique_draw))
+            one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
+            perturb_out = []
+            for i in range(beam_width):
+                perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
+                perturb_out.append(perturb)
+            # remove stop token perturbs
+            perturb_out = torch.cat(perturb_out, dim=1)[:-1]
 
-        # find expression from these predicted beam labels
-        expressions = [""] * config.batch_size * beam_width
-        for i in range(config.batch_size * beam_width):
-            for j in range(max_len):
-                expressions[i] += unique_draw[beam_labels_numpy[i, j]]
-        for index, prog in enumerate(expressions):
-            expressions[index] = prog.split("$")[0]
+            # find expression from these predicted beam labels
+            expressions = [""] * config.batch_size * beam_width
+            for i in range(config.batch_size * beam_width):
+                for j in range(max_len):
+                    expressions[i] += unique_draw[beam_labels_numpy[i, j]]
+            for index, prog in enumerate(expressions):
+                expressions[index] = prog.split("$")[0]
 
-        pred_expressions += expressions
-        predicted_images = image_from_expressions(parser, expressions, perturb_out)
-        target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-        target_images_new = np.repeat(
-            target_images, axis=0, repeats=beam_width)
+            pred_expressions += expressions
+            predicted_images = image_from_expressions(parser, expressions, perturb_out)
+            target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+            target_images_new = np.repeat(
+                target_images, axis=0, repeats=beam_width)
 
-        beam_R = np.sum(np.logical_and(target_images_new, predicted_images),
-                        (1, 2)) / np.sum(np.logical_or(target_images_new, predicted_images), (1, 2))
+            beam_R = np.sum(np.logical_and(target_images_new, predicted_images),
+                            (1, 2)) / np.sum(np.logical_or(target_images_new, predicted_images), (1, 2))
 
-        R = np.zeros((config.batch_size, 1))
-        for r in range(config.batch_size):
-            R[r, 0] = max(beam_R[r * beam_width:(r + 1) * beam_width])
+            R = np.zeros((config.batch_size, 1))
+            for r in range(config.batch_size):
+                R[r, 0] = max(beam_R[r * beam_width:(r + 1) * beam_width])
 
-        Rs += np.mean(R)
+            Rs += np.mean(R)
 
-        beam_CD = chamfer(target_images_new, predicted_images)
+            beam_CD = chamfer(target_images_new, predicted_images)
 
-        # select best expression by chamfer distance
-        best_labels = np.zeros((config.batch_size, max_len))
-        for r in range(config.batch_size):
-            best_labels[r] = beam_labels[r][np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])]
-        pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+            # select best expression by chamfer distance
+            best_labels = np.zeros((config.batch_size, max_len))
+            best_perturbs = np.zeros((config.batch_size, max_len, 3))
+            for r in range(config.batch_size):
+                idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
+                best_labels[r] = beam_labels[r][idx]
+                best_perturbs[r] = perturb_out[:, r*beam_width+idx].cpu().numpy()
+            pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+            pred_perturbs[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_perturbs
 
-        CD = np.zeros((config.batch_size, 1))
-        for r in range(config.batch_size):
-            CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
+            CD = np.zeros((config.batch_size, 1))
+            for r in range(config.batch_size):
+                CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
 
-        CDs += np.mean(CD)
+            CDs += np.mean(CD)
 
-        if save_viz:
-            for j in range(0, config.batch_size):
-                f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
-                a[0].imshow(data_[-1, j, 0, :, :], cmap="Greys_r")
-                a[0].axis("off")
-                a[0].set_title("target")
-                for i in range(1, beam_width + 1):
-                    a[i].imshow(
-                        predicted_images[j * beam_width + i - 1],
-                        cmap="Greys_r")
-                    a[i].set_title("{}".format(i))
-                    a[i].axis("off")
-                plt.savefig(
-                    image_path +
-                    "{}.png".format(batch_idx * config.batch_size + j),
-                    transparent=0)
-                plt.close("all")
+            if save_viz:
+                for j in range(0, config.batch_size):
+                    f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
+                    a[0].imshow(data_[-1, j, 0, :, :], cmap="Greys_r")
+                    a[0].axis("off")
+                    a[0].set_title("target")
+                    for i in range(1, beam_width + 1):
+                        a[i].imshow(
+                            predicted_images[j * beam_width + i - 1],
+                            cmap="Greys_r")
+                        a[i].set_title("{}".format(i))
+                        a[i].axis("off")
+                    plt.savefig(
+                        image_path +
+                        "{}.png".format(batch_idx * config.batch_size + j),
+                        transparent=0)
+                    plt.close("all")
 
-                save_viz = False
+                    save_viz = False
 
     print(
         "Inferring cad average chamfer distance: {}".format(
             CDs / (config.train_size // config.batch_size)),
         flush=True)
 
-    if refine:
-        Target_images = np.concatenate(Target_images, 0)
-        tweaked_expressions = []
-        scores = 0
-        for index, value in enumerate(pred_expressions):
-            prog = parser.Parser.parse(value)
-            if validity(prog, len(prog), len(prog) - 1):
-                optim_expression, score = optimize_expression(
-                    value,
-                    Target_images[index // beam_width],
-                    metric="chamfer",
-                    max_iter=None)
-                print(value)
-                tweaked_expressions.append(optim_expression)
-                scores += score
-            else:
-                # If the predicted program is invalid
-                tweaked_expressions.append(value)
-                scores += 16
-
-        print("chamfer scores", scores / len(tweaked_expressions))
-        with open(
-                tweak_expressions_path +
-                "chamfer_tweak_expressions_beamwidth_{}.txt".format(beam_width),
-                "w") as file:
-            for index, value in enumerate(tweaked_expressions):
-                file.write(value + "\n")
-
     Rs = Rs / (config.train_size // config.batch_size)
     CDs = CDs / (config.train_size // config.batch_size)
     print(Rs, CDs)
-    if refine:
-        results = {
-            "iou": Rs,
-            "chamferdistance": CDs,
-            "tweaked_chamfer_distance": scores / len(tweaked_expressions)
-        }
-    else:
-        results = {"iou": Rs, "chamferdistance": CDs}
-
-    with open(expressions_path +
-              "expressions_beamwidth_{}.txt".format(beam_width), "w") as file:
-        for e in pred_expressions:
-            file.write(e + "\n")
+    results = {"iou": Rs, "chamferdistance": CDs}
 
     with open(results_path + "results_beam_width_{}.org".format(beam_width),
               'w') as outfile:
         json.dump(results, outfile)
 
-    torch.save(pred_labels, labels_path + "labels.pt")
+    torch.save((pred_labels, pred_perturbs), labels_path + "labels.pt")
 
     pred_expressions = []
     pred_labels = np.zeros((config.test_size, max_len))
+    pred_perturbs = np.zeros((config.train_size, max_len, 3))
     Rs = 0
     CDs = 0
     Target_images = []
@@ -240,72 +202,65 @@ def infer_programs(inference_net, path):
             one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
             data = Variable(torch.from_numpy(data_)).to(device)
 
-        all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
-            [data, one_hot_labels], beam_width, max_len)
+            all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
+                [data, one_hot_labels], beam_width, max_len)
 
-        beam_labels = beams_parser(
-            all_beams, data_.shape[1], beam_width=beam_width)
+            beam_labels = beams_parser(
+                all_beams, data_.shape[1], beam_width=beam_width)
 
-        beam_labels_numpy = np.zeros(
-            (config.batch_size * beam_width, max_len), dtype=np.int32)
-        Target_images.append(data_[-1, :, 0, :, :])
-        for i in range(data_.shape[1]):
-            beam_labels_numpy[i * beam_width:(
-                i + 1) * beam_width, :] = beam_labels[i]
+            beam_labels_numpy = np.zeros(
+                (config.batch_size * beam_width, max_len), dtype=np.int32)
+            Target_images.append(data_[-1, :, 0, :, :])
+            for i in range(data_.shape[1]):
+                beam_labels_numpy[i * beam_width:(
+                    i + 1) * beam_width, :] = beam_labels[i]
 
-        # find expression from these predicted beam labels
-        expressions = [""] * config.batch_size * beam_width
-        for i in range(config.batch_size * beam_width):
-            for j in range(max_len):
-                expressions[i] += unique_draw[beam_labels_numpy[i, j]]
-        for index, prog in enumerate(expressions):
-            expressions[index] = prog.split("$")[0]
+            # get perturbations with forward pass of model
+            bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
+            one_hot_labels = prepare_input_op(bl, len(unique_draw))
+            one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
+            perturb_out = []
+            for i in range(beam_width):
+                perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
+                perturb_out.append(perturb)
+            # remove stop token perturbs
+            perturb_out = torch.cat(perturb_out, dim=1)[:-1]
 
-        pred_expressions += expressions
-        predicted_images = image_from_expressions(parser, expressions)
-        target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-        target_images_new = np.repeat(
-            target_images, axis=0, repeats=beam_width)
+            # find expression from these predicted beam labels
+            expressions = [""] * config.batch_size * beam_width
+            for i in range(config.batch_size * beam_width):
+                for j in range(max_len):
+                    expressions[i] += unique_draw[beam_labels_numpy[i, j]]
+            for index, prog in enumerate(expressions):
+                expressions[index] = prog.split("$")[0]
 
-        beam_CD = chamfer(target_images_new, predicted_images)
+            pred_expressions += expressions
+            predicted_images = image_from_expressions(parser, expressions, perturb_out)
+            target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+            target_images_new = np.repeat(
+                target_images, axis=0, repeats=beam_width)
 
-        CD = np.zeros((config.batch_size, 1))
-        for r in range(config.batch_size):
-            CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
+            beam_CD = chamfer(target_images_new, predicted_images)
 
-        CDs += np.mean(CD)
+            CD = np.zeros((config.batch_size, 1))
+            for r in range(config.batch_size):
+                CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
 
-        # select best expression by chamfer distance
-        best_labels = np.zeros((config.batch_size, max_len))
-        for r in range(config.batch_size):
-            best_labels[r] = beam_labels[r][np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])]
-        pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+            CDs += np.mean(CD)
+
+            # select best expression by chamfer distance
+            best_labels = np.zeros((config.batch_size, max_len))
+            best_perturbs = np.zeros((config.batch_size, max_len, 3))
+            for r in range(config.batch_size):
+                idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
+                best_labels[r] = beam_labels[r][idx]
+                best_perturbs[r] = perturb_out[:, r*beam_width+idx].cpu().numpy()
+            pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+            pred_perturbs[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_perturbs
 
     print(
         "Inferring validation cad average chamfer distance: {}".format(
             CDs / (config.test_size // config.batch_size)),
         flush=True)
 
-    if refine:
-        Target_images = np.concatenate(Target_images, 0)
-        tweaked_expressions = []
-        scores = 0
-        for index, value in enumerate(pred_expressions):
-            prog = parser.Parser.parse(value)
-            if validity(prog, len(prog), len(prog) - 1):
-                optim_expression, score = optimize_expression(
-                    value,
-                    Target_images[index // beam_width],
-                    metric="chamfer",
-                    max_iter=None)
-                print(value)
-                tweaked_expressions.append(optim_expression)
-                scores += score
-            else:
-                # If the predicted program is invalid
-                tweaked_expressions.append(value)
-                scores += 16
-
-        print("chamfer scores", scores / len(tweaked_expressions))
-
-    torch.save(pred_labels, labels_path + "val/labels.pt")
+    torch.save((pred_labels, pred_perturbs), labels_path + "val/labels.pt")

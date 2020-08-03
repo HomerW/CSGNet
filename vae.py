@@ -24,7 +24,7 @@ class VAE(nn.Module):
         self.relu = nn.ReLU()
         self.encode_embed = nn.Embedding(vocab_size, hidden_dim)
         self.decode_embed = nn.Embedding(vocab_size, hidden_dim)
-        self.encode_gru = nn.GRU(hidden_dim, hidden_dim)
+        self.encode_gru = nn.GRU(hidden_dim+3, hidden_dim)
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
         #self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
@@ -35,9 +35,10 @@ class VAE(nn.Module):
         self.initial_encoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
         self.initial_decoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
 
-    def encode(self, encoder_input):
-        init_state = self.initial_encoder_state.repeat(1, encoder_input.shape[1], 1)
-        _, h = self.encode_gru(self.relu(self.encode_embed(encoder_input)), init_state)
+    def encode(self, labels, perturbs):
+        init_state = self.initial_encoder_state.repeat(1, labels.shape[1], 1)
+        gru_input = torch.cat([self.relu(self.encode_embed(labels)), perturbs], dim=2)
+        _, h = self.encode_gru(gru_input, init_state)
         return self.encode_mu(h), self.encode_logvar(h)
 
     def reparameterize(self, mu, logvar):
@@ -49,7 +50,8 @@ class VAE(nn.Module):
         init_state = self.initial_decoder_state.repeat(1, z.shape[1], 1)
         output, h = self.decode_gru(z.repeat(timesteps, 1, 1), init_state)
         output = self.relu(self.dense_1(output))
-        return self.dense_output(output), self.dense_perturb(output)
+        token_logits = self.dense_output(output)
+        return token_logits, self.dense_perturb(torch.cat([token_logits, output], dim=2))
         #training
         # batch_size = z.shape[1]
         # if decoder_input is not None:
@@ -76,21 +78,29 @@ class VAE(nn.Module):
         #     return torch.stack(output_list)
 
     def forward(self, x):
-        # shape of x should be (timesteps, batch_size)
-        x = x.permute(1, 0)
+        labels, perturbs = x
+        # shape of labels should be (timesteps, batch_size)
+        labels = labels.permute(1, 0)
+        perturbs = perturbs.permute(1, 0, 2)
         # remove stop token
-        decoder_input = x[:-1, :]
-        mu, logvar = self.encode(x)
+        decoder_input = labels[:-1, :]
+        mu, logvar = self.encode(labels, perturbs)
         z = self.reparameterize(mu, logvar)
         return self.decode(z, decoder_input, decoder_input.shape[0]), mu, logvar
 
     # Reconstruction + KL divergence losses summed over all elements and batch
     def loss_function(self, recon_x, x, mu, logvar):
+        recon_tokens, recon_perturbs = recon_x
+        tokens, perturbs = x
+
         # remove start token from labels
-        x = x[:, 1:]
+        tokens = tokens[:, 1:]
+        perturbs = perturbs[:, 1:]
         # for cross entropy output needs to be batch_size, features, timesteps)
-        recon_x = recon_x.permute(1, 2, 0)
-        BCE = F.cross_entropy(recon_x, x, reduction='sum')
+        recon_tokens = recon_tokens.permute(1, 2, 0)
+        recon_perturbs = recon_perturbs.permute(1, 0, 2)
+        CE = F.cross_entropy(recon_tokens, tokens, reduction='sum')
+        MSE = F.mse_loss(recon_perturbs, perturbs, reduction='sum')
 
         # see Appendix B from VAE paper:
         # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
@@ -98,7 +108,7 @@ class VAE(nn.Module):
         # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
         KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
-        return BCE + KLD
+        return CE, MSE, KLD
 
     # def clean(self, prev_output, next_output, timesteps):
     #     """
