@@ -93,7 +93,7 @@ class ImitateJoint(nn.Module):
         self.dense_output = nn.Linear(
             in_features=self.hd_sz, out_features=(self.num_draws))
         self.dense_perturb = nn.Linear(
-            in_features=self.hd_sz+self.num_draws, out_features=3)
+            in_features=self.hd_sz+self.num_draws, out_features=20)
         self.drop = nn.Dropout(dropout)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
@@ -248,6 +248,13 @@ class ImitateJoint(nn.Module):
 
         else:
             assert False, "Incorrect mode!!"
+
+    def perturb_loss(self, perturb, perturb_out):
+        perturb_out = perturb_out.permute(1, 2, 0)
+        x_loss = F.cross_entropy(perturb_out[:, :8, :], perturb[:, :, 0] + 4)
+        y_loss = F.cross_entropy(perturb_out[:, 8:16, :], perturb[:, :, 1] + 4)
+        r_loss = F.cross_entropy(perturb_out[:, 16:, :], perturb[:, :, 2] + 2)
+        return x_loss + y_loss + r_loss
 
     def beam_search(self, data: List, w: int, max_time: int):
         """

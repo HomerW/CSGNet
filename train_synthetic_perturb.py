@@ -53,7 +53,7 @@ dataset_sizes = {
     11: [350000, 1000 * proportion],
     13: [350000, 1000 * proportion]
 }
-dataset_sizes = {k: [x // 10 for x in v] for k, v in dataset_sizes.items()}
+dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -148,9 +148,10 @@ for epoch in range(config.epochs):
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 outputs, perturb_out = imitate_net([data, one_hot_labels, k])
                 perturbs = torch.from_numpy(perturbs).to(device)
-                perturb_out = perturb_out.permute(1, 0, 2)
-                # mask off ops and stop token
-                perturb_loss = F.mse_loss(perturbs[labels < 396], perturb_out[labels < 396]) / len(dataset_sizes.keys()) / config.num_traj
+                # perturb_out = perturb_out.permute(1, 0, 2)
+                # # mask off ops and stop token
+                # perturb_loss = F.mse_loss(perturbs[labels < 396], perturb_out[labels < 396]) / len(dataset_sizes.keys()) / config.num_traj
+                perturb_loss = imitate_net.loss_function(perturbs, perturb_out) / len(dataset_sizes.keys()) / config.num_traj
                 if not imitate_net.tf:
                     acc += float((torch.argmax(torch.stack(outputs), dim=2).permute(1, 0) == labels).float().sum()) \
                            / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
@@ -200,8 +201,9 @@ for epoch in range(config.epochs):
                 loss_token = (losses_joint(test_outputs, labels, time_steps=k + 1) /
                          (k + 1)) / types_prog
                 perturbs = torch.from_numpy(perturbs).to(device)
-                perturb_outputs = perturb_outputs.permute(1, 0, 2)
-                perturb_loss = F.mse_loss(perturbs[labels < 396], perturb_outputs[labels < 396]) / len(dataset_sizes.keys())
+                # perturb_outputs = perturb_outputs.permute(1, 0, 2)
+                # perturb_loss = F.mse_loss(perturbs[labels < 396], perturb_outputs[labels < 396]) / len(dataset_sizes.keys())
+                perturb_loss = imitate_net.perturb_loss(perturb, perturb_outputs) / len(dataset_sizes.keys())
                 loss += loss_token + perturb_loss
                 #loss += loss_token
                 loss_t += loss_token
