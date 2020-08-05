@@ -18,7 +18,7 @@ from globals import device
 inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
-generator_hidden_dim = 256
+generator_hidden_dim = 128
 generator_latent_dim = 20
 max_len = 13
 
@@ -27,8 +27,9 @@ Trains VAE to convergence on programs from inference network
 TODO: train to convergence and not number of epochs
 """
 def train_generator(generator_net, load_path, save_path):
-    labels, perturbs = torch.load(f"{load_path}/labels/labels.pt", map_location=device)
-    # labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
+    # labels, perturbs = torch.load(f"{load_path}/labels/labels.pt", map_location=device)
+    labels = torch.load(f"wake_sleep_data/best_labels_full/labels.pt", map_location=device)
+    perturbs = np.zeros((len(labels), max_len, 3))
 
     # pad with a start and stop token
     labels = np.pad(labels, ((0, 0), (1, 1)), constant_values=399)
@@ -40,7 +41,7 @@ def train_generator(generator_net, load_path, save_path):
 
     generator_net.train()
 
-    for epoch in range(500):
+    for epoch in range(100000):
         train_loss = 0
         ce_loss = 0
         kl_loss = 0
@@ -54,7 +55,7 @@ def train_generator(generator_net, load_path, save_path):
             optimizer.zero_grad()
             recon_batch, mu, logvar = generator_net(batch)
             ce, mse, kld = generator_net.loss_function(recon_batch, batch, mu, logvar)
-            loss = ce + mse + kld
+            loss = ce + mse + 0.1*kld
             loss.backward()
             train_loss += loss.item() / (len(labels) * (labels.shape[1]-1))
             ce_loss += ce.item() / (len(labels) * (labels.shape[1]-1))
@@ -65,20 +66,21 @@ def train_generator(generator_net, load_path, save_path):
         print(f"generator epoch {epoch} loss: {train_loss} accuracy: {acc} \
                 ce: {ce_loss} kld: {kl_loss} mse: {mse_loss}")
 
-        # if (epoch + 1) % 10 == 0:
-        #     latents = torch.randn(1, inference_test_size, generator_latent_dim).to(device)
-        #     sample_tokens, sample_perturbs = generator_net.decode(latents, timesteps=labels.shape[1] - 1)
-        #     sample_tokens = sample_tokens.permute(1, 0, 2).max(dim=2)[1][:, :-1]
-        #     sample_perturbs = sample_perturbs.permute(1, 0, 2)[:, :-1]
-        #     os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/"), exist_ok=True)
-        #     os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/val/"), exist_ok=True)
-        #     torch.save((sample_tokens, sample_perturbs), f"wake_sleep_data/generator/tmp/labels.pt")
-        #     torch.save((sample_tokens, sample_perturbs), f"wake_sleep_data/generator/tmp/val/labels.pt")
-        #     fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/tmp",
-        #                                           "trained_models/fid-model.pth",
-        #                                           100,
-        #                                           32)
-        #     print('FID: ', fid_value)
+        if (epoch + 1) % 10 == 0:
+            latents = torch.randn(1, inference_test_size, generator_latent_dim).to(device)
+            sample_tokens, sample_perturbs = generator_net.decode(latents, timesteps=labels.shape[1] - 1)
+            sample_tokens = sample_tokens.permute(1, 0, 2).max(dim=2)[1][:, :-1]
+            print(sample_tokens[:10])
+            sample_perturbs = sample_perturbs.permute(1, 0, 2)[:, :-1]
+            os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/"), exist_ok=True)
+            os.makedirs(os.path.dirname(f"wake_sleep_data/generator/tmp/val/"), exist_ok=True)
+            torch.save((sample_tokens, sample_perturbs), f"wake_sleep_data/generator/tmp/labels.pt")
+            torch.save((sample_tokens, sample_perturbs), f"wake_sleep_data/generator/tmp/val/labels.pt")
+            fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/tmp",
+                                                  "trained_models/fid-model-latest.pth",
+                                                  100,
+                                                  32)
+            print('FID: ', fid_value)
 
     train_tokens = torch.zeros((inference_train_size, max_len))
     train_perturbs = torch.zeros((inference_train_size, max_len, 3))
@@ -147,7 +149,7 @@ def get_csgnet():
 
     return imitate_net
 
-def load_generate(iter):
+def load_images():
     generator = WakeSleepGen(f"wake_sleep_data/generator/tmp/labels.pt",
                              f"wake_sleep_data/generator/tmp/val/labels.pt",
                              train_size=3000,
@@ -157,6 +159,9 @@ def load_generate(iter):
 
     batch_data, batch_labels, batch_perturbs = next(train_gen)
     print(batch_labels[:10])
+    # print(any((torch.abs(batch_perturbs) > 0.5).view(-1)))
+    # for i in range(len(batch_labels)):
+    #     print([int(x) for x in batch_labels[i]].index(399))
     f, a = plt.subplots(1, 10, figsize=(30, 3))
     for j in range(10):
         a[j].imshow(batch_data[-1, j, 0, :, :], cmap="Greys_r")
@@ -165,10 +170,10 @@ def load_generate(iter):
     plt.close("all")
 
 def load_infer(iter):
-    encoder_net, imitate_net = get_csgnet()
+    imitate_net = get_csgnet()
     print("pre loading model")
     # pretrained_dict = torch.load(f"trained_models/imitate-{iter}.pth")
-    pretrained_dict = torch.load(f"trained_models/best-model-full.pth")
+    pretrained_dict = torch.load(f"trained_models/synthetic_perturb2.pth")
     imitate_net_dict = imitate_net.state_dict()
     pretrained_dict = {
         k: v
@@ -177,13 +182,13 @@ def load_infer(iter):
     imitate_net_dict.update(pretrained_dict)
     imitate_net.load_state_dict(imitate_net_dict)
 
-    infer_programs((encoder_net, imitate_net), iter)
+    infer_programs(imitate_net, iter)
 
 """
 Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
-    imitate_net = get_csgnet()
+    # imitate_net = get_csgnet()
     generator_net = VAE(generator_hidden_dim, generator_latent_dim, vocab_size).to(device)
 
     # print("pre loading model")
@@ -212,10 +217,11 @@ def wake_sleep(iterations):
         if not i == 0: # already inferred initial cad programs using pretrained model
             infer_programs(imitate_net, infer_path)
         train_generator(generator_net, infer_path, generate_path)
-        train_inference(imitate_net, generate_path)
+        # train_inference(imitate_net, infer_path + "/labels")
 
-        torch.save(imitate_net.state_dict(), f"trained_models/imitate.pth")
-        torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
+        # torch.save(imitate_net.state_dict(), f"trained_models/imitate.pth")
+        # torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
 
-wake_sleep(50)
-#load_generate(0)
+# wake_sleep(1)
+# load_images()
+# load_infer(0)

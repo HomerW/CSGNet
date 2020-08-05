@@ -177,6 +177,7 @@ class MixedGenerateData:
                             stacks[-1, :, 0:1, :, :],
                             batch_size=self.batch_size,
                             shuffle=False))
+                perturbs = np.pad(perturbs, ((0, 0), (0, 1), (0, 0)))
                 yield [stacks.copy(), labels, perturbs]
 
     def get_test_data(self,
@@ -251,6 +252,7 @@ class MixedGenerateData:
                             stacks[-1, :, 0:1, :, :],
                             batch_size=self.batch_size,
                             shuffle=False))
+                perturbs = np.pad(perturbs, ((0, 0), (0, 1), (0, 0)))
                 yield [stacks.copy(), labels, perturbs]
 
 

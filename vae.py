@@ -27,8 +27,8 @@ class VAE(nn.Module):
         self.encode_gru = nn.GRU(hidden_dim+3, hidden_dim)
         self.encode_mu = nn.Linear(hidden_dim, latent_dim)
         self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
-        #self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
-        self.decode_gru = nn.GRU(latent_dim, hidden_dim)
+        self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
+        #self.decode_gru = nn.GRU(latent_dim, hidden_dim)
         self.dense_1 = nn.Linear(hidden_dim, hidden_dim)
         self.dense_output = nn.Linear(hidden_dim, vocab_size)
         self.dense_perturb = nn.Linear(hidden_dim+vocab_size, 3)
@@ -47,35 +47,41 @@ class VAE(nn.Module):
         return mu + eps*std
 
     def decode(self, z, decoder_input=None, timesteps=None):
-        init_state = self.initial_decoder_state.repeat(1, z.shape[1], 1)
-        output, h = self.decode_gru(z.repeat(timesteps, 1, 1), init_state)
-        output = self.relu(self.dense_1(output))
-        token_logits = self.dense_output(output)
-        return token_logits, self.dense_perturb(torch.cat([token_logits, output], dim=2))
-        #training
-        # batch_size = z.shape[1]
-        # if decoder_input is not None:
-        #     # concatentate latent code with input sequence
-        #     comb_input = torch.cat([z.repeat(timesteps, 1, 1), self.relu(self.decode_embed(decoder_input))], 2)
-        #     init_state = self.initial_decoder_state.repeat(1, batch_size, 1)
-        #     output, h = self.decode_gru(comb_input, init_state)
-        #     return self.dense_2(self.relu(self.dense_1(output)))
-        # # sampling
-        # else:
-        #     z_seq = torch.reshape(z, (1, batch_size, z.shape[2]))
-        #     # initial token is the start/stop token (399)
-        #     output_token = torch.full((1, batch_size), 399, dtype=torch.long).to(device).long()
-        #     h = self.initial_decoder_state.repeat(1, batch_size, 1)
-        #
-        #     output_list = []
-        #     # loop through sequence using decoded output (plus latent code) and hidden state as next input
-        #     for _ in range(timesteps-1):
-        #         in_seq = self.relu(self.decode_embed(output_token)).view(1, batch_size, -1)
-        #         output, h = self.decode_gru(torch.cat([z_seq, in_seq], 2), h)
-        #         output = self.dense_2(self.relu(self.dense_1(output[0])))
-        #         output_list.append(output)
-        #         output_token = torch.argmax(output, dim=1)
-        #     return torch.stack(output_list)
+        # init_state = self.initial_decoder_state.repeat(1, z.shape[1], 1)
+        # output, h = self.decode_gru(z.repeat(timesteps, 1, 1), init_state)
+        # output = self.relu(self.dense_1(output))
+        # token_logits = self.dense_output(output)
+        # return token_logits, self.dense_perturb(torch.cat([token_logits, output], dim=2))
+        # training
+        batch_size = z.shape[1]
+        if decoder_input is not None:
+            # concatentate latent code with input sequence
+            comb_input = torch.cat([z.repeat(timesteps, 1, 1), self.relu(self.decode_embed(decoder_input))], 2)
+            #comb_input = z.repeat(timesteps, 1, 1)
+            init_state = self.initial_decoder_state.repeat(1, batch_size, 1)
+            output, h = self.decode_gru(comb_input, init_state)
+            output = self.relu(self.dense_1(output))
+            token_logits = self.dense_output(output)
+            return token_logits, self.dense_perturb(torch.cat([token_logits, output], dim=2))
+        # sampling
+        else:
+            # initial token is the start/stop token (399)
+            output_token = torch.full((1, batch_size), 399, dtype=torch.long).to(device).long()
+            h = self.initial_decoder_state.repeat(1, batch_size, 1)
+
+            output_list = []
+            perturb_list = []
+            # loop through sequence using decoded output (plus latent code) and hidden state as next input
+            for _ in range(timesteps):
+                in_seq = self.relu(self.decode_embed(output_token)).view(1, batch_size, -1)
+                output, h = self.decode_gru(torch.cat([z, in_seq], 2), h)
+                #output, h = self.decode_gru(z, h)
+                output = self.relu(self.dense_1(output[0]))
+                token_logits = self.dense_output(output)
+                output_list.append(token_logits)
+                perturb_list.append(self.dense_perturb(torch.cat([token_logits, output], dim=1)))
+                output_token = torch.argmax(token_logits, dim=1)
+            return torch.stack(output_list), torch.stack(perturb_list)
 
     def forward(self, x):
         labels, perturbs = x

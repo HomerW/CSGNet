@@ -5,7 +5,10 @@ import pickle
 
 data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
                      5: "data/synthetic/two_ops/expressions.txt",
-                     7: "data/synthetic/three_ops/expressions.txt"}
+                     7: "data/synthetic/three_ops/expressions.txt",
+                     9: "data/synthetic/four_ops/expressions.txt",
+                     11: "data/synthetic/five_ops/expressions.txt",
+                     13: "data/synthetic/six_ops/expressions.txt"}
 # data_labels_paths_p = {3: "data/synthetic_perturbed/one_op/expressions.txt",
 #                        5: "data/synthetic_perturbed/two_ops/expressions.txt",
 #                        7: "data/synthetic_perturbed/three_ops/expressions.txt"}
@@ -52,14 +55,14 @@ for index in data_labels_paths.keys():
             perturbs = []
             for token in parsed:
                 if token['type'] == 'draw':
-                    loc_x = np.random.randint(-8.0, 8.0)
-                    loc_y = np.random.randint(-8.0, 8.0)
-                    loc_r = np.random.randint(-4.0, 4.0)
+                    loc_x = np.random.randint(-4.0, 4.0)
+                    loc_y = np.random.randint(-4.0, 4.0)
+                    loc_r = np.random.randint(-2.0, 2.0)
                     perturbs.append([loc_x, loc_y, loc_r])
                 else:
                     perturbs.append([0.0, 0.0, 0.0])
             perturbations[index].append(perturbs)
             print(f"{i} / {len(programs)}")
 
-with open("perturbations_more", 'wb') as f:
+with open("perturbations", 'wb') as f:
     f.write(pickle.dumps(perturbations))

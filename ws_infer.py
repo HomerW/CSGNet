@@ -5,7 +5,6 @@ from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import numpy as np
-from torch.autograd.variable import Variable
 from src.Models.loss import losses_joint
 from src.Models.models_perturb import Encoder
 from src.Models.models_perturb import ImitateJoint, ParseModelOutput
@@ -32,7 +31,7 @@ beam_width = 10
 Infer programs on cad dataset
 """
 def infer_programs(inference_net, path):
-    save_viz = False
+    save_viz = True
 
     config = read_config.Config("config_cad.yml")
 
@@ -83,8 +82,8 @@ def infer_programs(inference_net, path):
             data_ = next(train_gen)
             labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
             one_hot_labels = prepare_input_op(labels, len(unique_draw))
-            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
-            data = Variable(torch.from_numpy(data_)).to(device)
+            one_hot_labels = torch.from_numpy(one_hot_labels).to(device)
+            data = torch.from_numpy(data_).to(device)
 
             all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
                 [data, one_hot_labels], beam_width, max_len)
@@ -199,8 +198,8 @@ def infer_programs(inference_net, path):
             data_ = next(val_gen)
             labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
             one_hot_labels = prepare_input_op(labels, len(unique_draw))
-            one_hot_labels = Variable(torch.from_numpy(one_hot_labels)).to(device)
-            data = Variable(torch.from_numpy(data_)).to(device)
+            one_hot_labels = torch.from_numpy(one_hot_labels).to(device)
+            data = torch.from_numpy(data_).to(device)
 
             all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
                 [data, one_hot_labels], beam_width, max_len)

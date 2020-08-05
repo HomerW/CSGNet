@@ -43,9 +43,6 @@ if __name__ == '__main__':
     inference_train_size = 10000
     inference_test_size = 3000
     vocab_size = 400
-    generator_hidden_dim = 256
-    generator_latent_dim = 20
-    max_len = 13
     batch_size = 300
     real_batch_size = batch_size // 3
     epochs = 50
@@ -64,7 +61,6 @@ if __name__ == '__main__':
         11: [370000, 100000],
         13: [370000, 100000]
     }
-    dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
     syn_batch_size = (batch_size // 3) // len(dataset_sizes)
     syn_gen = MixedGenerateData(data_labels_paths=data_labels_paths,
                                 batch_size=syn_batch_size)
@@ -106,14 +102,7 @@ if __name__ == '__main__':
         path="data/cad/cad.h5",
         if_augment=False)
 
-    fake_batch_size = (batch_size // 3) // 2
-    fake_tree_gen = WakeSleepGen(f"wake_sleep_data_tree/best_tree_labels/labels.pt",
-                                 f"wake_sleep_data_tree/best_tree_labels/val/labels.pt",
-                                 batch_size=fake_batch_size,
-                                 train_size=inference_train_size,
-                                 test_size=inference_test_size)
-    tree_gen_train = fake_tree_gen.get_train_data()
-    tree_gen_test = fake_tree_gen.get_test_data()
+    fake_batch_size = (batch_size // 3)
     fake_seq_gen = WakeSleepGen(f"wake_sleep_data/best_sequence_labels/labels.pt",
                                  f"wake_sleep_data/best_sequence_labels/val/labels.pt",
                                  batch_size=fake_batch_size,
@@ -124,9 +113,9 @@ if __name__ == '__main__':
 
     model = FIDModel().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    actual_batch_size = (real_batch_size + (syn_batch_size * 6) + (2 * fake_batch_size))
+    actual_batch_size = (real_batch_size + (syn_batch_size * 6) + fake_batch_size)
     labels = torch.cat([torch.zeros(real_batch_size), torch.ones(syn_batch_size * 6),
-                        torch.full((2 * fake_batch_size,), 2)])
+                        torch.full((fake_batch_size,), 2)])
     labels = labels.to(device).long()
 
     for epoch in range(epochs):
@@ -135,10 +124,9 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             real_batch = torch.from_numpy(next(real_gen_train)[-1, :, 0:1, :, :]).to(device)
             syn_batch = get_syn_batch(syn_gen_train)
-            tree_batch = next(tree_gen_train)[0][-1, :, 0:1, :, :].to(device)
             seq_batch = next(seq_gen_train)[0][-1, :, 0:1, :, :].to(device)
-            # each batch is 1/3 synthetic, 1/3 real inferred programs, 1/3 fake generated programs
-            batch = torch.cat([real_batch, syn_batch, tree_batch, seq_batch])
+            # each batch is 1/3 synthetic, 1/3 real, 1/3 fake generated
+            batch = torch.cat([real_batch, syn_batch, seq_batch])
             logits = model(batch)
             loss = model.loss_function(logits, labels)
             train_loss += float(loss)
@@ -151,13 +139,12 @@ if __name__ == '__main__':
             with torch.no_grad():
                 real_batch = torch.from_numpy(next(real_gen_test)[-1, :, 0:1, :, :]).to(device)
                 syn_batch = get_syn_batch(syn_gen_test)
-                tree_batch = next(tree_gen_test)[0][-1, :, 0:1, :, :].to(device)
                 seq_batch = next(seq_gen_test)[0][-1, :, 0:1, :, :].to(device)
-                # each batch is 1/3 synthetic, 1/3 real inferred programs, 1/3 fake generated programs
-                batch = torch.cat([real_batch, syn_batch, tree_batch, seq_batch])
+                # each batch is 1/3 synthetic, 1/3 real, 1/3 fake generated
+                batch = torch.cat([real_batch, syn_batch, seq_batch])
                 logits = model(batch)
                 loss = model.loss_function(logits, labels)
                 test_loss += float(loss)
         print(f"average test loss {epoch}: {test_loss / (inference_test_size // batch_size)}")
 
-    torch.save(model.state_dict(), f"trained_models/fid-model-real.pth")
+    torch.save(model.state_dict(), f"trained_models/fid-model-latest.pth")

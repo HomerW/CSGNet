@@ -21,10 +21,14 @@ class WakeSleepGen:
                  max_len=13):
 
         self.labels, self.perturbs = torch.load(labels_path, map_location=device)
+        if isinstance(self.labels, np.ndarray):
+            self.labels, self.perturbs = torch.from_numpy(self.labels).to(device), torch.from_numpy(self.perturbs).to(device)
         self.labels = self.labels.long()
         self.perturbs = self.perturbs
 
         self.test_labels, self.test_perturbs = torch.load(labels_path, map_location=device)
+        if isinstance(self.test_labels, np.ndarray):
+            self.test_labels, self.test_perturbs = torch.from_numpy(self.test_labels).to(device), torch.from_numpy(self.test_perturbs).to(device)
         self.test_labels = self.test_labels.long()
         self.test_perturbs = self.test_perturbs
 

@@ -38,16 +38,22 @@ encoder_net.cuda()
 
 data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
                      5: "data/synthetic/two_ops/expressions.txt",
-                     7: "data/synthetic/three_ops/expressions.txt"}
+                     7: "data/synthetic/three_ops/expressions.txt",
+                     9: "data/synthetic/four_ops/expressions.txt",
+                     11: "data/synthetic/five_ops/expressions.txt",
+                     13: "data/synthetic/six_ops/expressions.txt"}
 # first element of list is num of training examples, and second is number of
 # testing examples.
 proportion = config.proportion  # proportion is in percentage. vary from [1, 100].
 dataset_sizes = {
-    3: [proportion * 250, proportion * 50],
-    5: [proportion * 1000, proportion * 100],
-    7: [proportion * 1500, proportion * 200]
+    3: [25000, 50 * proportion],
+    5: [100000, 500 * proportion],
+    7: [150000, 500 * proportion],
+    9: [250000, 500 * proportion],
+    11: [350000, 1000 * proportion],
+    13: [350000, 1000 * proportion]
 }
-# dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
+dataset_sizes = {k: [x // 10 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -142,8 +148,9 @@ for epoch in range(config.epochs):
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 outputs, perturb_out = imitate_net([data, one_hot_labels, k])
                 perturbs = torch.from_numpy(perturbs).to(device)
-                perturb_out = perturb_out.permute(1, 0, 2)[:, :-1, :]
-                perturb_loss = F.mse_loss(perturbs, perturb_out) / len(dataset_sizes.keys()) / config.num_traj
+                perturb_out = perturb_out.permute(1, 0, 2)
+                # mask off ops and stop token
+                perturb_loss = F.mse_loss(perturbs[labels < 396], perturb_out[labels < 396]) / len(dataset_sizes.keys()) / config.num_traj
                 if not imitate_net.tf:
                     acc += float((torch.argmax(torch.stack(outputs), dim=2).permute(1, 0) == labels).float().sum()) \
                            / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
@@ -153,7 +160,7 @@ for epoch in range(config.epochs):
                 loss_k_token = ((losses_joint(outputs, labels, time_steps=k + 1) / (
                     k + 1)) / len(dataset_sizes.keys()) / config.num_traj)
                 loss_k = loss_k_token + perturb_loss
-                # loss_k = loss_k_token
+                #loss_k = loss_k_token
                 loss_k.backward()
                 loss += loss_k.data
                 loss_p += perturb_loss.data
@@ -193,9 +200,10 @@ for epoch in range(config.epochs):
                 loss_token = (losses_joint(test_outputs, labels, time_steps=k + 1) /
                          (k + 1)) / types_prog
                 perturbs = torch.from_numpy(perturbs).to(device)
-                perturb_outputs = perturb_outputs.permute(1, 0, 2)[:, :-1, :]
-                perturb_loss = F.mse_loss(perturbs, perturb_outputs) / len(dataset_sizes.keys())
+                perturb_outputs = perturb_outputs.permute(1, 0, 2)
+                perturb_loss = F.mse_loss(perturbs[labels < 396], perturb_outputs[labels < 396]) / len(dataset_sizes.keys())
                 loss += loss_token + perturb_loss
+                #loss += loss_token
                 loss_t += loss_token
                 loss_p += perturb_loss
                 test_output, perturb_out = imitate_net.test([data, one_hot_labels, max_len])
@@ -230,7 +238,7 @@ for epoch in range(config.epochs):
     reduce_plat.reduce_on_plateu(metrics["cd"])
     print("Epoch {}/{}=>  train_loss: {}, iou: {}, cd: {}, test_mse: {}, test_acc: {}, token_loss: {}, perturb_loss: {}".format(epoch, config.epochs,
                                       mean_train_loss.cpu().numpy(),
-                                      metrics["iou"], metrics["cd"], test_loss, acc, test_loss_p, test_loss_t))
+                                      metrics["iou"], metrics["cd"], test_loss, acc, test_loss_t, test_loss_p))
     print(f"CORRECT PROGRAMS: {correct_programs}")
     print(f"PREDICTED PROGRAMS: {pred_programs}")
     print(f"RATIO: {correct_programs/pred_programs}")
@@ -239,5 +247,5 @@ for epoch in range(config.epochs):
     if prev_test_cd > metrics["cd"]:
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
-                   "trained_models/synthetic.pth")
+                   "trained_models/synthetic_perturb2.pth")
         prev_test_cd = metrics["cd"]
