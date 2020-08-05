@@ -150,15 +150,15 @@ def get_csgnet():
     return imitate_net
 
 def load_images():
-    generator = WakeSleepGen(f"wake_sleep_data/generator/tmp/labels.pt",
-                             f"wake_sleep_data/generator/tmp/val/labels.pt",
+    generator = WakeSleepGen(f"0/labels/labels.pt",
+                             f"0/labels/val/labels.pt",
                              train_size=3000,
                              test_size=3000,)
 
     train_gen = generator.get_train_data()
 
     batch_data, batch_labels, batch_perturbs = next(train_gen)
-    print(batch_labels[:10])
+    print(batch_perturbs[:10])
     # print(any((torch.abs(batch_perturbs) > 0.5).view(-1)))
     # for i in range(len(batch_labels)):
     #     print([int(x) for x in batch_labels[i]].index(399))
@@ -173,7 +173,7 @@ def load_infer(iter):
     imitate_net = get_csgnet()
     print("pre loading model")
     # pretrained_dict = torch.load(f"trained_models/imitate-{iter}.pth")
-    pretrained_dict = torch.load(f"trained_models/synthetic_perturb2.pth")
+    pretrained_dict = torch.load(f"trained_models/small_test_perturb.pth")
     imitate_net_dict = imitate_net.state_dict()
     pretrained_dict = {
         k: v
@@ -223,5 +223,5 @@ def wake_sleep(iterations):
         # torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
 
 # wake_sleep(1)
-# load_images()
-# load_infer(0)
+load_images()
+load_infer(1)

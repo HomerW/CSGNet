@@ -88,12 +88,20 @@ class ImitateJoint(nn.Module):
         self.tf_logsoftmax = nn.LogSoftmax(2)
         self.softmax = nn.Softmax(1)
 
+        # self.dense_output_1 = nn.Linear(
+        #     in_features=self.hd_sz, out_features=self.hd_sz)
+        # self.dense_output_2 = nn.Linear(
+        #     in_features=self.hd_sz, out_features=(self.num_draws))
+        # self.dense_perturb_1 = nn.Linear(
+        #     in_features=self.hd_sz+self.num_draws, out_features=self.hd_sz)
+        # self.dense_perturb_2 = nn.Linear(
+        #     in_features=self.hd_sz, out_features=3)
         self.dense_fc_1 = nn.Linear(
             in_features=self.hd_sz, out_features=self.hd_sz)
         self.dense_output = nn.Linear(
             in_features=self.hd_sz, out_features=(self.num_draws))
         self.dense_perturb = nn.Linear(
-            in_features=self.hd_sz+self.num_draws, out_features=20)
+            in_features=self.hd_sz+self.num_draws, out_features=3)
         self.drop = nn.Dropout(dropout)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
@@ -147,6 +155,8 @@ class ImitateJoint(nn.Module):
             x_f = x_f.repeat(program_len+1, 1, 1)
             input = torch.cat((self.drop(x_f), input_op_rnn), 2)
             output, h = self.rnn(input, h)
+            # token_logits = self.dense_output_2(self.relu(self.dense_output_1(self.drop(output))))
+            # perturb_out = self.dense_perturb_2(self.relu(self.dense_perturb_1(torch.cat([token_logits, self.drop(output)], dim=2))))
             output = self.relu(self.dense_fc_1(self.drop(output)))
             token_logits = self.dense_output(self.drop(output))
             perturb_out = self.dense_perturb(torch.cat([token_logits, self.drop(output)], dim=2))
@@ -232,8 +242,10 @@ class ImitateJoint(nn.Module):
                 hd = self.relu(self.dense_fc_1(self.drop(h[0])))
                 output_logits = self.dense_output(self.drop(hd))
                 perturb_out = self.dense_perturb(torch.cat([output_logits, self.drop(hd)], dim=1))
-                perturb_out[:, :2] = torch.clamp(perturb_out[:, :2], -4, 4)
-                perturb_out[:, 2:] = torch.clamp(perturb_out[:, 2:], -2, 2)
+                # perturb_out[:, :2] = torch.clamp(perturb_out[:, :2], -4, 4)
+                # perturb_out[:, 2:] = torch.clamp(perturb_out[:, 2:], -2, 2)
+                # output_logits = self.dense_output_2(self.relu(self.dense_output_1(self.drop(h[0]))))
+                # perturb_out = self.dense_perturb_2(self.relu(self.dense_perturb_1(torch.cat([output_logits, self.drop(h[0])], dim=1))))
                 perturb_out = torch.round(perturb_out)
                 output = self.logsoftmax(output_logits)
                 perturb_outputs.append(perturb_out)
@@ -249,12 +261,12 @@ class ImitateJoint(nn.Module):
         else:
             assert False, "Incorrect mode!!"
 
-    def perturb_loss(self, perturb, perturb_out):
-        perturb_out = perturb_out.permute(1, 2, 0)
-        x_loss = F.cross_entropy(perturb_out[:, :8, :], perturb[:, :, 0] + 4)
-        y_loss = F.cross_entropy(perturb_out[:, 8:16, :], perturb[:, :, 1] + 4)
-        r_loss = F.cross_entropy(perturb_out[:, 16:, :], perturb[:, :, 2] + 2)
-        return x_loss + y_loss + r_loss
+    # def perturb_loss(self, perturb, perturb_out):
+    #     perturb_out = perturb_out.permute(1, 2, 0)
+    #     x_loss = F.cross_entropy(perturb_out[:, :8, :], perturb[:, :, 0] + 4)
+    #     y_loss = F.cross_entropy(perturb_out[:, 8:16, :], perturb[:, :, 1] + 4)
+    #     r_loss = F.cross_entropy(perturb_out[:, 16:, :], perturb[:, :, 2] + 2)
+    #     return x_loss + y_loss + r_loss
 
     def beam_search(self, data: List, w: int, max_time: int):
         """
@@ -298,6 +310,7 @@ class ImitateJoint(nn.Module):
                 h, _ = self.rnn(input, h)
                 hd = self.relu(self.dense_fc_1(self.drop(h[0])))
                 dense_output = self.dense_output(self.drop(hd))
+                #dense_output = self.dense_output_2(self.relu(self.dense_output_1(self.drop(h[0]))))
                 output = self.logsoftmax(dense_output)
                 # Element wise multiply by previous probabs
                 output = torch.nn.Softmax(1)(output)
@@ -426,13 +439,13 @@ class ParseModelOutput:
                 continue
                 # Check the validity of the expressions
 
-            new_program = []
-            for token, p in zip(program, perturb_out[:, index]):
-                new_token = {}
-                if token['type'] == 'draw':
-                    token['param'] = [int(x) + delta for x, delta in zip(token['param'], p)]
-                new_program.append(token)
-            self.sim.generate_stack(new_program)
+            # new_program = []
+            # for token, p in zip(program, perturb_out[:, index]):
+            #     new_token = {}
+            #     if token['type'] == 'draw':
+            #         token['param'] = [int(x) + delta for x, delta in zip(token['param'], p)]
+            #     new_program.append(token)
+            self.sim.generate_stack(program)
             stack = self.sim.stack_t
             stack = np.stack(stack, axis=0)
             if if_pred_images:

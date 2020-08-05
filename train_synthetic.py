@@ -36,16 +36,22 @@ encoder_net.cuda()
 
 data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
                      5: "data/synthetic/two_ops/expressions.txt",
-                     7: "data/synthetic/three_ops/expressions.txt"}
+                     7: "data/synthetic/three_ops/expressions.txt",
+                     9: "data/synthetic/four_ops/expressions.txt",
+                     11: "data/synthetic/five_ops/expressions.txt",
+                     13: "data/synthetic/six_ops/expressions.txt"}
 # first element of list is num of training examples, and second is number of
 # testing examples.
 proportion = config.proportion  # proportion is in percentage. vary from [1, 100].
 dataset_sizes = {
-    3: [proportion * 250, proportion * 50],
-    5: [proportion * 1000, proportion * 100],
-    7: [proportion * 1500, proportion * 200]
+    3: [25000, 50 * proportion],
+    5: [100000, 500 * proportion],
+    7: [150000, 500 * proportion],
+    9: [250000, 500 * proportion],
+    11: [350000, 1000 * proportion],
+    13: [350000, 1000 * proportion]
 }
-# dataset_sizes = {k: [x // 100 for x in v] for k, v in dataset_sizes.items()}
+# dataset_sizes = {k: [x // 1000 for x in v] for k, v in dataset_sizes.items()}
 
 generator = MixedGenerateData(
     data_labels_paths=data_labels_paths,
@@ -216,5 +222,5 @@ for epoch in range(config.epochs):
     if prev_test_cd > metrics["cd"]:
         print("Saving the Model weights based on CD", flush=True)
         torch.save(imitate_net.state_dict(),
-                   "trained_models/synthetic.pth")
+                   "trained_models/synthetic_orginal.pth")
         prev_test_cd = metrics["cd"]

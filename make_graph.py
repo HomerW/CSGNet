@@ -2,24 +2,48 @@ import matplotlib.pyplot as plt
 
 fig, ax = plt.subplots()
 
-with open("cont-cd.txt") as file:
-    cont_cds = file.readlines()
-cont_cds = [float(x.strip()) for x in cont_cds]
+# with open("cont-cd.txt") as file:
+#     cont_cds = file.readlines()
+# cont_cds = [float(x.strip()) for x in cont_cds]
+#
+# with open("disc-cd.txt") as file:
+#     disc_cds = file.readlines()
+# disc_cds = [float(x.strip()) for x in disc_cds]
+#
+# disc_cds = disc_cds[:120]
 
-with open("disc-cd.txt") as file:
-    disc_cds = file.readlines()
-disc_cds = [float(x.strip()) for x in disc_cds]
+cds = [
+1.7068822988116452,
+1.5999383407047685,
+1.5336316374469743,
+1.4933427861743538,
+1.4637316234206117,
+1.4225150962649216,
+1.3916034408707154,
+1.3525437939169458,
+1.3245159488033253,
+1.3108437971547269,
+1.3047725024280659,
+1.2800927085715077,
+1.2788965344775123,
+1.2574594101403576,
+1.2487196358187629,
+1.2513081958798715,
+1.247822646181767,
+1.245179870008427,
+1.2348713020959754,
+1.2328326543676675]
 
-disc_cds = disc_cds[:120]
 
-ax.set_ylabel("chamfer distance")
-ax.set_xlabel("epoch")
-ax.set_title("discrete and continuous inference net chamfer distance on perturbed data")
+ax.set_ylabel("chamfer distance on cad validation")
+ax.set_xlabel("iteration")
+ax.set_title("wake sleep no gen")
 
-ax.plot(range(120), cont_cds, 'r', label="discrete + delta")
-ax.plot(range(120), disc_cds, 'b', label="discrete")
-ax.legend()
-plt.savefig("cd_graph3.png")
+# ax.plot(range(120), cont_cds, 'r', label="discrete + delta")
+# ax.plot(range(120), disc_cds, 'b', label="discrete")
+ax.plot(range(len(cds)), cds)
+# ax.legend()
+plt.savefig("cd_graph4.png")
 
 # regular_fid = [
 #  0.980387559465866,
