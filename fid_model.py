@@ -3,11 +3,6 @@ import torch.nn.functional as F
 from torch import nn, optim
 import numpy as np
 from src.utils.generators.shapenet_generater import Generator
-from vae import VAE
-from ws_infer import infer_programs
-from vae_tree_reduced import VAE
-from tree_conversion import label_to_tree, tree_to_label
-from ws_infer import infer_programs
 from src.utils.generators.mixed_len_generator import MixedGenerateData
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
 from src.utils.generators.shapenet_generater import Generator

@@ -79,7 +79,7 @@ def get_activations(generator, model, batch_size=50, dims=32, verbose=False):
         end = i + batch_size
 
         images = next(generator)
-        if len(images) == 3: # generated samples
+        if len(images) == 2: # generated samples
             images = images[0].to(device)
             # images = torch.from_numpy(np.random.randint(0, 2, (1, 100, 1, 64, 64))).to(device).float()
         else: # cad data

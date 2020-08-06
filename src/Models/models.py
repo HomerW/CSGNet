@@ -48,8 +48,7 @@ class ImitateJoint(nn.Module):
                  time_steps=3,
                  num_draws=None,
                  canvas_shape=[64, 64],
-                 dropout=0.5,
-                 teacher_force=False):
+                 dropout=0.5):
         """
         Defines RNN structure that takes features encoded by CNN and produces program
         instructions at every time step.
@@ -95,7 +94,6 @@ class ImitateJoint(nn.Module):
         self.drop = nn.Dropout(dropout)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
-        self.tf = teacher_force
 
     def forward(self, x: List):
         """
@@ -124,32 +122,15 @@ class ImitateJoint(nn.Module):
             h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
             x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
             x_f = x_f.view(1, batch_size, self.in_sz)
-            if not self.tf:
-                outputs = []
-                for timestep in range(0, program_len + 1):
-                    # X_f is always input to the RNN at every time step
-                    # along with previous predicted label
-                    input_op_rnn = self.relu(
-                        self.dense_input_op(input_op[:, timestep, :]))
-                    input_op_rnn = input_op_rnn.view(1, batch_size,
-                                                     self.input_op_sz)
-                    #input_op_rnn = torch.zeros((1, batch_size, self.input_op_sz)).cuda()
-                    input = torch.cat((self.drop(x_f), input_op_rnn), 2)
-                    h, _ = self.rnn(input, h)
-                    hd = self.relu(self.dense_fc_1(self.drop(h[0])))
-                    output = self.logsoftmax(self.dense_output(self.drop(hd)))
-                    outputs.append(output)
-                return outputs
-            else:
-                # remove stop token for input to decoder
-                input_op_rnn = self.relu(self.dense_input_op(input_op))[:, :-1, :].permute(1, 0, 2)
-                # input_op_rnn = torch.zeros((program_len+1, batch_size, self.input_op_sz)).cuda()
-                x_f = x_f.repeat(program_len+1, 1, 1)
-                input = torch.cat((self.drop(x_f), input_op_rnn), 2)
-                output, h = self.rnn(input, h)
-                output = self.relu(self.dense_fc_1(self.drop(output)))
-                output = self.tf_logsoftmax(self.dense_output(self.drop(output)))
-                return output
+            # remove stop token for input to decoder
+            input_op_rnn = self.relu(self.dense_input_op(input_op))[:, :-1, :].permute(1, 0, 2)
+            # input_op_rnn = torch.zeros((program_len+1, batch_size, self.input_op_sz)).cuda()
+            x_f = x_f.repeat(program_len+1, 1, 1)
+            input = torch.cat((self.drop(x_f), input_op_rnn), 2)
+            output, h = self.rnn(input, h)
+            output = self.relu(self.dense_fc_1(self.drop(output)))
+            output = self.tf_logsoftmax(self.dense_output(self.drop(output)))
+            return output
 
         elif self.mode == 2:
             '''Train variable length RL'''

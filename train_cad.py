@@ -8,12 +8,13 @@ import torch.optim as optim
 import sys
 from src.utils import read_config
 from torch.autograd.variable import Variable
-from src.Models.models import ImitateJoint
+from src.Models.models import ImitateJoint, ParseModelOutput
 from src.Models.models import Encoder
 from src.utils.generators.shapenet_generater import Generator
 from src.utils.learn_utils import LearningRate
 from src.utils.reinforce import Reinforce
 from src.utils.train_utils import prepare_input_op
+import time
 
 if len(sys.argv) > 1:
     config = read_config.Config(sys.argv[1])
@@ -101,6 +102,7 @@ num_traj = config.num_traj
 training_reward_save = 0
 
 for epoch in range(config.epochs):
+    start = time.time()
     train_loss = 0
     total_reward = 0
     imitate_net.epsilon = 1
@@ -159,11 +161,17 @@ for epoch in range(config.epochs):
               total_reward / (config.train_size //
                               (config.batch_size)), epoch)
 
+    end = time.time()
+    print(f"TIME:{end - start}")
+
+    CD = 0
     test_losses = 0
     total_reward = 0
     imitate_net.eval()
     imitate_net.epsilon = 0
     for batch_idx in range(config.test_size // config.batch_size):
+        parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
+                          config.canvas_shape)
         with torch.no_grad():
             loss = Variable(torch.zeros(1)).cuda()
             Rs = np.zeros((config.batch_size, 1))
@@ -183,6 +191,12 @@ for epoch in range(config.epochs):
             R = R[0]
             loss = loss + reinforce.pg_loss_var(R, samples, outputs)
 
+            test_outputs = imitate_net.test([data, one_hot_labels, max_len])
+            pred_images, correct_prog, pred_prog = parser.get_final_canvas(
+                test_output, if_just_expressions=False, if_pred_images=True)
+            target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+            CD += np.sum(chamfer(target_images, pred_images))
+
             if reward == "chamfer":
                 Rs = Rs + R
 
@@ -195,16 +209,15 @@ for epoch in range(config.epochs):
     total_reward = total_reward / (config.test_size // config.batch_size)
 
     test_loss = test_losses.cpu().numpy() / (config.test_size // config.batch_size)
+    test_cd = CD / (config.test_size // config.batch_size)
     print('test_loss', test_loss, epoch)
     print('test_reward', total_reward, epoch)
     if config.lr_sch:
         # Negative of the rewards should be minimized
         reduce_plat.reduce_on_plateu(-total_reward)
 
-    print("Epoch {}/{}=>  train_loss: {}, test_loss: {}, train_mse: {},"
-                "test_mse: {}".format(epoch, config.epochs,
-                                      mean_train_loss.cpu().numpy(), test_loss,
-                                      1, 1))
+    print("Epoch {}/{}=>  train_loss: {}, test_loss: {}, test_cd: {}".format(epoch, config.epochs,
+                                      mean_train_loss.cpu().numpy(), test_loss, test_cd))
     del test_losses
 
     # Save when test reward is increased

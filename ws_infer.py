@@ -6,20 +6,19 @@ from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import numpy as np
 from src.Models.loss import losses_joint
-from src.Models.models_perturb import Encoder
-from src.Models.models_perturb import ImitateJoint, ParseModelOutput
+from src.Models.models import Encoder
+from src.Models.models import ImitateJoint, ParseModelOutput
 from src.utils import read_config
 from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, beams_parser, validity, image_from_expressions, stack_from_expressions
 import matplotlib
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from src.utils.refine import optimize_expression
 import os
 import json
-import sys
 from src.utils.generators.shapenet_generater import Generator
 from globals import device
+import time
 
 inference_train_size = 10000
 inference_test_size = 3000
@@ -30,12 +29,10 @@ beam_width = 10
 """
 Infer programs on cad dataset
 """
-def infer_programs(inference_net, path):
-    save_viz = True
+def infer_programs(imitate_net, path):
+    save_viz = False
 
     config = read_config.Config("config_cad.yml")
-
-    imitate_net = inference_net
 
     # Load the terminals symbols of the grammar
     with open("terminals.txt", "r") as file:
@@ -51,7 +48,6 @@ def infer_programs(inference_net, path):
                               config.canvas_shape)
     pred_expressions = []
     pred_labels = np.zeros((config.train_size, max_len))
-    pred_perturbs = np.zeros((config.train_size, max_len, 3))
     image_path = f"{path}/images/"
     results_path = f"{path}/results/"
     labels_path = f"{path}/labels/"
@@ -76,6 +72,9 @@ def infer_programs(inference_net, path):
     Rs = 0
     CDs = 0
     Target_images = []
+
+    start = time.time()
+
     for batch_idx in range(config.train_size // config.batch_size):
         with torch.no_grad():
             print(f"Inferring cad batch: {batch_idx}")
@@ -98,17 +97,6 @@ def infer_programs(inference_net, path):
                 beam_labels_numpy[i * beam_width:(
                     i + 1) * beam_width, :] = beam_labels[i]
 
-            # get perturbations with forward pass of model
-            bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
-            one_hot_labels = prepare_input_op(bl, len(unique_draw))
-            one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
-            perturb_out = []
-            for i in range(beam_width):
-                perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
-                perturb_out.append(perturb)
-            # remove stop token perturbs
-            perturb_out = torch.cat(perturb_out, dim=1)[:-1]
-
             # find expression from these predicted beam labels
             expressions = [""] * config.batch_size * beam_width
             for i in range(config.batch_size * beam_width):
@@ -118,31 +106,28 @@ def infer_programs(inference_net, path):
                 expressions[index] = prog.split("$")[0]
 
             pred_expressions += expressions
-            predicted_images = image_from_expressions(parser, expressions, perturb_out)
+            predicted_images = image_from_expressions(parser, expressions)
             target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
             target_images_new = np.repeat(
                 target_images, axis=0, repeats=beam_width)
 
-            beam_R = np.sum(np.logical_and(target_images_new, predicted_images),
-                            (1, 2)) / np.sum(np.logical_or(target_images_new, predicted_images), (1, 2))
-
-            R = np.zeros((config.batch_size, 1))
-            for r in range(config.batch_size):
-                R[r, 0] = max(beam_R[r * beam_width:(r + 1) * beam_width])
-
-            Rs += np.mean(R)
+            # beam_R = np.sum(np.logical_and(target_images_new, predicted_images),
+            #                 (1, 2)) / np.sum(np.logical_or(target_images_new, predicted_images), (1, 2))
+            #
+            # R = np.zeros((config.batch_size, 1))
+            # for r in range(config.batch_size):
+            #     R[r, 0] = max(beam_R[r * beam_width:(r + 1) * beam_width])
+            #
+            # Rs += np.mean(R)
 
             beam_CD = chamfer(target_images_new, predicted_images)
 
             # select best expression by chamfer distance
             best_labels = np.zeros((config.batch_size, max_len))
-            best_perturbs = np.zeros((config.batch_size, max_len, 3))
             for r in range(config.batch_size):
                 idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
                 best_labels[r] = beam_labels[r][idx]
-                best_perturbs[r] = perturb_out[:, r*beam_width+idx].cpu().numpy()
             pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
-            pred_perturbs[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_perturbs
 
             CD = np.zeros((config.batch_size, 1))
             for r in range(config.batch_size):
@@ -184,11 +169,10 @@ def infer_programs(inference_net, path):
               'w') as outfile:
         json.dump(results, outfile)
 
-    torch.save((pred_labels, pred_perturbs), labels_path + "labels.pt")
+    torch.save(pred_labels, labels_path + "labels.pt")
 
     pred_expressions = []
     pred_labels = np.zeros((config.test_size, max_len))
-    pred_perturbs = np.zeros((config.train_size, max_len, 3))
     Rs = 0
     CDs = 0
     Target_images = []
@@ -214,17 +198,6 @@ def infer_programs(inference_net, path):
                 beam_labels_numpy[i * beam_width:(
                     i + 1) * beam_width, :] = beam_labels[i]
 
-            # get perturbations with forward pass of model
-            bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
-            one_hot_labels = prepare_input_op(bl, len(unique_draw))
-            one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
-            perturb_out = []
-            for i in range(beam_width):
-                perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
-                perturb_out.append(perturb)
-            # remove stop token perturbs
-            perturb_out = torch.cat(perturb_out, dim=1)[:-1]
-
             # find expression from these predicted beam labels
             expressions = [""] * config.batch_size * beam_width
             for i in range(config.batch_size * beam_width):
@@ -234,7 +207,7 @@ def infer_programs(inference_net, path):
                 expressions[index] = prog.split("$")[0]
 
             pred_expressions += expressions
-            predicted_images = image_from_expressions(parser, expressions, perturb_out)
+            predicted_images = image_from_expressions(parser, expressions)
             target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
             target_images_new = np.repeat(
                 target_images, axis=0, repeats=beam_width)
@@ -249,17 +222,17 @@ def infer_programs(inference_net, path):
 
             # select best expression by chamfer distance
             best_labels = np.zeros((config.batch_size, max_len))
-            best_perturbs = np.zeros((config.batch_size, max_len, 3))
             for r in range(config.batch_size):
                 idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
                 best_labels[r] = beam_labels[r][idx]
-                best_perturbs[r] = perturb_out[:, r*beam_width+idx].cpu().numpy()
             pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
-            pred_perturbs[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_perturbs
 
     print(
         "Inferring validation cad average chamfer distance: {}".format(
             CDs / (config.test_size // config.batch_size)),
         flush=True)
 
-    torch.save((pred_labels, pred_perturbs), labels_path + "val/labels.pt")
+    torch.save(pred_labels, labels_path + "val/labels.pt")
+
+    end = time.time()
+    print(f"Inference time: {start - end}")

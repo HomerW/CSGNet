@@ -5,7 +5,7 @@ from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
 import numpy as np
-from src.Models.models_perturb import ParseModelOutput
+from src.Models.models import ParseModelOutput
 from src.utils.train_utils import validity
 from globals import device
 
@@ -20,24 +20,20 @@ class WakeSleepGen:
                  canvas_shape=[64, 64],
                  max_len=13):
 
-        self.labels, self.perturbs = torch.load(labels_path, map_location=device)
+        self.labels = torch.load(labels_path, map_location=device)
         if isinstance(self.labels, np.ndarray):
-            self.labels, self.perturbs = torch.from_numpy(self.labels).to(device), torch.from_numpy(self.perturbs).to(device)
+            self.labels = torch.from_numpy(self.labels).to(device)
         self.labels = self.labels.long()
-        self.perturbs = self.perturbs
 
-        self.test_labels, self.test_perturbs = torch.load(labels_path, map_location=device)
+        self.test_labels = torch.load(labels_path, map_location=device)
         if isinstance(self.test_labels, np.ndarray):
-            self.test_labels, self.test_perturbs = torch.from_numpy(self.test_labels).to(device), torch.from_numpy(self.test_perturbs).to(device)
+            self.test_labels= torch.from_numpy(self.test_labels).to(device)
         self.test_labels = self.test_labels.long()
-        self.test_perturbs = self.test_perturbs
 
         # pad labels with a stop symbol, should be correct but need to confirm this
         # since infer_programs currently outputs len 13 labels
         self.labels = F.pad(self.labels, (0, 1), 'constant', 399)
         self.test_labels = F.pad(self.test_labels, (0, 1), 'constant', 399)
-        self.perturbs = F.pad(self.perturbs, (0, 0, 0, 1, 0, 0), 'constant', 0)
-        self.test_perturbs = F.pad(self.test_perturbs, (0, 0, 0, 1, 0, 0), 'constant', 0)
 
         self.train_size = train_size
         self.test_size = test_size
@@ -75,7 +71,6 @@ class WakeSleepGen:
                 stacks = []
                 batch_exp = [self.expressions[index] for index in ids[i:i+self.batch_size]]
                 batch_labels = self.labels[ids[i:i+self.batch_size]]
-                batch_perturbs = self.perturbs[ids[i:i+self.batch_size]]
 
                 for index, exp in enumerate(batch_exp):
                     program = self.parser.Parser.parse(exp)
@@ -87,16 +82,9 @@ class WakeSleepGen:
                             (self.max_len + 1, self.max_len // 2 + 1, self.canvas_shape[0],
                              self.canvas_shape[1]))
                         stacks.append(stack)
-                        batch_perturbs[index] = 0
                         continue
 
-                    new_program = []
-                    for token, p in zip(program, batch_perturbs[index]):
-                        new_token = {}
-                        if token['type'] == 'draw':
-                            token['param'] = [int(x) + delta for x, delta in zip(token['param'], p)]
-                        new_program.append(token)
-                    self.parser.sim.generate_stack(new_program)
+                    self.parser.sim.generate_stack(program)
                     stack = self.parser.sim.stack_t
                     stack = np.stack(stack, axis=0)
                     # pad if the program was shorter than the max_len since csgnet can only train on fixed sizes
@@ -106,7 +94,7 @@ class WakeSleepGen:
 
                 # data needs to be (program_len + 1, dataset_size, stack_length, canvas_height, canvas_width)
                 batch_data = torch.from_numpy(stacks).permute(1, 0, 2, 3, 4)
-                yield (batch_data, batch_labels, batch_perturbs)
+                yield (batch_data, batch_labels)
 
     def get_test_data(self):
         while True:
@@ -120,7 +108,6 @@ class WakeSleepGen:
                 stacks = []
                 batch_exp = self.test_expressions[i:i+self.batch_size]
                 batch_labels = self.test_labels[i:i+self.batch_size]
-                batch_perturbs = self.test_perturbs[i:i+self.batch_size]
 
                 for index, exp in enumerate(batch_exp):
                     program = self.parser.Parser.parse(exp)
@@ -132,16 +119,9 @@ class WakeSleepGen:
                             (self.max_len + 1, self.max_len // 2 + 1, self.canvas_shape[0],
                              self.canvas_shape[1]))
                         stacks.append(stack)
-                        batch_perturbs[index] = 0
                         continue
 
-                    new_program = []
-                    for token, p in zip(program, batch_perturbs[index]):
-                        new_token = {}
-                        if token['type'] == 'draw':
-                            token['param'] = [int(x) + delta for x, delta in zip(token['param'], p)]
-                        new_program.append(token)
-                    self.parser.sim.generate_stack(new_program)
+                    self.parser.sim.generate_stack(program)
                     stack = self.parser.sim.stack_t
                     stack = np.stack(stack, axis=0)
                     # pad if the program was shorter than the max_len since csgnet can only train on fixed sizes
@@ -151,4 +131,4 @@ class WakeSleepGen:
 
                 # data needs to be (program_len + 1, dataset_size, stack_length, canvas_height, canvas_width)
                 batch_data = torch.from_numpy(stacks).permute(1, 0, 2, 3, 4)
-                yield (batch_data, batch_labels, batch_perturbs)
+                yield (batch_data, batch_labels)
