@@ -235,4 +235,4 @@ def infer_programs(imitate_net, path):
     torch.save(pred_labels, labels_path + "val/labels.pt")
 
     end = time.time()
-    print(f"Inference time: {start - end}")
+    print(f"Inference time: {end-start}")

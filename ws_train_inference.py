@@ -139,7 +139,7 @@ def train_inference(imitate_net, path):
             num_worse += 1
         else:
             num_worse = 0
-            best_test_cd = test_cd
+            best_test_cd = metrics["cd"]
             best_imitate_dict = imitate_net.state_dict()
         if num_worse >= patience:
             # load the best model and stop training
@@ -147,11 +147,11 @@ def train_inference(imitate_net, path):
             return epoch + 1
 
         # reduce_plat.reduce_on_plateu(metrics["cd"])
-        print(f"Epoch {epoch}/50 =>  train_loss: {mean_train_loss}, iou: {0}, cd: {metrics['cd']}, test_mse: {test_loss}, test_acc: {0}")
+        print(f"Epoch {epoch}/100 =>  train_loss: {mean_train_loss}, iou: {0}, cd: {metrics['cd']}, test_mse: {test_loss}, test_acc: {0}")
         # print(f"CORRECT PROGRAMS: {correct_programs}")
         # print(f"PREDICTED PROGRAMS: {pred_programs}")
         # print(f"RATIO: {correct_programs/pred_programs}")
 
         del test_losses, outputs, test_outputs
 
-    return 50
+    return 100

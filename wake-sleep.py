@@ -113,6 +113,8 @@ def train_generator(generator_net, load_path, save_path):
     #                                       100)
     # print('FID: ', fid_value)
 
+    return 500
+
 """
 Get initial pretrained CSGNet inference network
 """
@@ -216,4 +218,4 @@ def wake_sleep(iterations):
         # if allowed_time <= 0:
         #     break
 
-wake_sleep(1e20)
+wake_sleep(10000)
