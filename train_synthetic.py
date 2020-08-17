@@ -131,7 +131,7 @@ for epoch in range(config.epochs):
                            (config.batch_size * config.num_traj)):
         optimizer.zero_grad()
         loss = Variable(torch.zeros(1)).cuda().data
-        # acc = 0
+        acc = 0
         for _ in range(config.num_traj):
             for k in dataset_sizes.keys():
                 data, labels = next(train_gen_objs[k])
@@ -143,8 +143,8 @@ for epoch in range(config.epochs):
                 data = Variable(torch.from_numpy(data)).cuda()
                 labels = Variable(torch.from_numpy(labels)).cuda()
                 outputs = imitate_net([data, one_hot_labels, k])
-                # acc += float((torch.argmax(outputs, dim=2).permute(1, 0) == labels).float().sum()) \
-                #        / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
+                acc += float((torch.argmax(outputs, dim=2).permute(1, 0) == labels).float().sum()) \
+                       / (labels.shape[0] * labels.shape[1]) / types_prog / config.num_traj
                 loss_k = (losses_joint(outputs, labels, time_steps=k + 1) / (
                     k + 1)) / len(dataset_sizes.keys()) / config.num_traj
                 loss_k.backward()
@@ -154,13 +154,13 @@ for epoch in range(config.epochs):
         optimizer.step()
         train_loss += loss
         print(f"batch {batch_idx} train loss: {loss.cpu().numpy()}")
-        # print(f"acc: {acc}")
+        print(f"acc: {acc}")
 
     mean_train_loss = train_loss / (config.train_size // (config.batch_size))
     print(f"epoch {epoch} mean train loss: {mean_train_loss.cpu().numpy()}")
     imitate_net.eval()
     loss = Variable(torch.zeros(1)).cuda()
-    # acc = 0
+    acc = 0
     metrics = {"cos": 0, "iou": 0, "cd": 0}
     IOU = 0
     COS = 0
@@ -182,8 +182,8 @@ for epoch in range(config.epochs):
                 loss += (losses_joint(test_outputs, labels, time_steps=k + 1) /
                          (k + 1)) / types_prog
                 test_output = imitate_net.test([data, one_hot_labels, max_len])
-                # acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
-                #         / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
+                acc += float((torch.argmax(torch.stack(test_output), dim=2)[:k].permute(1, 0) == labels[:, :-1]).float().sum()) \
+                        / (len(labels) * (k+1)) / types_prog / (config.test_size // config.batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_output, if_just_expressions=False, if_pred_images=True)
                 correct_programs += len(correct_prog)

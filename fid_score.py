@@ -216,13 +216,13 @@ def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
                              f"{images_path}/val/labels.pt",
                              batch_size=batch_size,
                              test_size=3000).get_test_data()
-    # cad_generator = WakeSleepGen(f"wake_sleep_data/best_labels_full/labels.pt",
-    #                          f"wake_sleep_data/best_labels_full/val/labels.pt",
-    #                          batch_size=batch_size,
-    #                          test_size=3000).get_test_data()
-    cad_generator = Generator().val_gen(batch_size=batch_size,
-                                        path="data/cad/cad.h5",
-                                        if_augment=False)
+    cad_generator = WakeSleepGen("wake_sleep_data/inference/best_simple_labels/labels/labels.pt",
+                             "wake_sleep_data/inference/best_simple_labels/labels/val/labels.pt",
+                             batch_size=batch_size,
+                             test_size=3000).get_test_data()
+    # cad_generator = Generator().val_gen(batch_size=batch_size,
+    #                                     path="data/cad/cad.h5",
+    #                                     if_augment=False)
 
     m1, s1 = calculate_activation_statistics(generator, model, batch_size,
                                          dims)

@@ -1,49 +1,115 @@
 import matplotlib.pyplot as plt
 
-fig, ax = plt.subplots()
+# fig, ax = plt.subplots()
+gs_kw = dict(height_ratios=[1, 5])
+f, (ax, ax2) = plt.subplots(2, 1, figsize=(8, 8), gridspec_kw=gs_kw, sharex=True)
 
-# with open("cont-cd.txt") as file:
-#     cont_cds = file.readlines()
-# cont_cds = [float(x.strip()) for x in cont_cds]
-#
-# with open("disc-cd.txt") as file:
-#     disc_cds = file.readlines()
-# disc_cds = [float(x.strip()) for x in disc_cds]
-#
-# disc_cds = disc_cds[:120]
+with open("ws.txt") as file:
+    ws_cds = file.readlines()
+ws_cds = [float(x.strip()) for x in ws_cds]
 
-cds = [
-1.7068822988116452,
-1.5999383407047685,
-1.5336316374469743,
-1.4933427861743538,
-1.4637316234206117,
-1.4225150962649216,
-1.3916034408707154,
-1.3525437939169458,
-1.3245159488033253,
-1.3108437971547269,
-1.3047725024280659,
-1.2800927085715077,
-1.2788965344775123,
-1.2574594101403576,
-1.2487196358187629,
-1.2513081958798715,
-1.247822646181767,
-1.245179870008427,
-1.2348713020959754,
-1.2328326543676675]
+with open("ws-epochs.txt") as file:
+    ws_inf = file.readlines()
+ws_inf = [float(x.strip()) for x in ws_inf]
 
+with open("ws-epochs-gen.txt") as file:
+    ws_gen = file.readlines()
+ws_gen = [float(x.strip()) for x in ws_gen]
 
-ax.set_ylabel("chamfer distance on cad validation")
-ax.set_xlabel("iteration")
-ax.set_title("wake sleep no gen")
+with open("ws-simple.txt") as file:
+    simple_cds = file.readlines()
+simple_cds = [float(x.strip()) for x in simple_cds]
 
-# ax.plot(range(120), cont_cds, 'r', label="discrete + delta")
-# ax.plot(range(120), disc_cds, 'b', label="discrete")
-ax.plot(range(len(cds)), cds)
-# ax.legend()
-plt.savefig("cd_graph4.png")
+with open("ws-simple-epochs.txt") as file:
+    simple_inf = file.readlines()
+simple_inf = [float(x.strip()) for x in simple_inf]
+
+with open("ws-switch.txt") as file:
+    switch_cds = file.readlines()
+switch_cds = [float(x.strip()) for x in switch_cds]
+
+with open("ws-switch-epochs.txt") as file:
+    switch_inf = file.readlines()
+switch_inf = [float(x.strip()) for x in switch_inf]
+
+with open("ws-switch-epochs-gen.txt") as file:
+    switch_gen = file.readlines()
+switch_gen = [float(x.strip()) for x in switch_gen]
+
+with open("ws-simple-reset.txt") as file:
+    reset_cds = file.readlines()
+reset_cds = [float(x.strip()) for x in reset_cds]
+
+with open("ws-simple-reset-epochs.txt") as file:
+    reset_inf = file.readlines()
+reset_inf = [float(x.strip()) for x in reset_inf]
+
+switch_inf = [x / 100 for x in switch_inf]
+
+ws_time = [(inf*43 + gen*2.7 + 402) / 60 / 60 for inf, gen in zip(ws_inf, ws_gen)]
+simple_time = [(inf*43 + 402) / 60 / 60 for inf in simple_inf]
+switch_time = [(inf*43 + gen*2.7 + 402) / 60 / 60 for inf, gen in zip(switch_inf, switch_gen)]
+reset_time = [(inf*43 + 402) / 60 / 60 for inf in reset_inf]
+
+ws_time = [0] + ws_time
+simple_time = [0] + simple_time
+switch_time = [0] + switch_time
+reset_time = [0] + reset_time
+
+print(reset_time[-1])
+
+ax2.set_ylabel("Chamfer Distance on Cad Validation")
+ax2.set_xlabel("Time (hours)")
+ax.set_title("Performance of Wake Sleep Variants")
+
+ax.plot(ws_time, ws_cds, 'r', label="Wake Sleep, Converge Switch")
+ax.plot(simple_time, simple_cds, 'b', label="Wake Sleep, No Gen. Model")
+ax.plot(switch_time[:-1], switch_cds, 'c', label="Wake Sleep, 1 Epoch Switch")
+ax.plot(reset_time, reset_cds, 'y', label="Wake Sleep, No Gen. Model, Reset Weights")
+ax.plot(range(15), [1.14] * 15, 'g--', label="SL + RL (best CD)")
+ax.plot(range(15), [ws_cds[0]] * 15, 'g', label="SL (best CD)")
+
+ax2.plot(ws_time, ws_cds, 'r', label="Wake Sleep, Converge Switch")
+ax2.plot(simple_time, simple_cds, 'b', label="Wake Sleep, No Gen. Model")
+ax2.plot(switch_time[:-1], switch_cds, 'c', label="Wake Sleep, 1 Epoch Switch")
+ax2.plot(reset_time, reset_cds, 'y', label="Wake Sleep, No Gen. Model, Reset Weights")
+ax2.plot(range(15), [1.14] * 15, 'g--', label="SL + RL (best CD)")
+ax2.plot(range(15), [ws_cds[0]] * 15, 'g', label="SL (best CD)")
+leg = ax2.legend()
+
+# zoom-in / limit the view to different portions of the data
+ax.set_ylim(1.7, 4)  # outliers only
+ax2.set_ylim(1, 1.6)  # most of the data
+
+# hide the spines between ax and ax2
+ax.spines['bottom'].set_visible(False)
+ax2.spines['top'].set_visible(False)
+ax.xaxis.tick_top()
+ax.tick_params(labeltop=False)  # don't put tick labels at the top
+ax2.xaxis.tick_bottom()
+
+d = .015  # how big to make the diagonal lines in axes coordinates
+# arguments to pass to plot, just so we don't keep repeating them
+kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
+ax.plot((-d, +d), (-5*d, +5*d), **kwargs)        # top-left diagonal
+ax.plot((1 - d, 1 + d), (-5*d, +5*d), **kwargs)  # top-right diagonal
+
+kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-right diagonal
+
+plt.draw() # Draw the figure so you can find the positon of the legend.
+
+# Get the bounding box of the original legend
+bb = leg.get_bbox_to_anchor().inverse_transformed(ax.transAxes)
+
+# Change to location of the legend.
+yOffset = .7
+bb.y0 += yOffset
+bb.y1 += yOffset
+leg.set_bbox_to_anchor(bb, transform = ax.transAxes)
+
+plt.savefig("cd_graph_time.png")
 
 # regular_fid = [
 #  0.980387559465866,

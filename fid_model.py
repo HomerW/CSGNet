@@ -14,7 +14,7 @@ class FIDModel(nn.Module):
         self.conv1 = nn.Conv2d(1, 8, 3, padding=(1, 1))
         self.conv2 = nn.Conv2d(8, 16, 3, padding=(1, 1))
         self.conv3 = nn.Conv2d(16, 32, 3, padding=(1, 1))
-        self.dense = nn.Linear(2048, 3)
+        self.dense = nn.Linear(2048, 1)
 
     def forward(self, x):
         batch_size = x.shape[0]
@@ -32,14 +32,16 @@ class FIDModel(nn.Module):
         return x
 
     def loss_function(self, logits, labels):
-        return F.cross_entropy(logits, labels)
+        # return F.cross_entropy(logits, labels)
+        return F.binary_cross_entropy_with_logits(logits, labels)
 
 if __name__ == '__main__':
     inference_train_size = 10000
     inference_test_size = 3000
     vocab_size = 400
     batch_size = 300
-    real_batch_size = batch_size // 3
+    # real_batch_size = batch_size // 3
+    real_batch_size = batch_size // 2
     epochs = 50
 
     data_labels_paths = {3: "data/synthetic/one_op/expressions.txt",
@@ -56,7 +58,8 @@ if __name__ == '__main__':
         11: [370000, 100000],
         13: [370000, 100000]
     }
-    syn_batch_size = (batch_size // 3) // len(dataset_sizes)
+    # syn_batch_size = (batch_size // 3) // len(dataset_sizes)
+    syn_batch_size = (batch_size // 2) // len(dataset_sizes)
     syn_gen = MixedGenerateData(data_labels_paths=data_labels_paths,
                                 batch_size=syn_batch_size)
     syn_gen_train = {}
@@ -97,21 +100,22 @@ if __name__ == '__main__':
         path="data/cad/cad.h5",
         if_augment=False)
 
-    fake_batch_size = (batch_size // 3)
-    fake_seq_gen = WakeSleepGen(f"wake_sleep_data/best_sequence_labels/labels.pt",
-                                 f"wake_sleep_data/best_sequence_labels/val/labels.pt",
-                                 batch_size=fake_batch_size,
-                                 train_size=inference_train_size,
-                                 test_size=inference_test_size)
-    seq_gen_train = fake_seq_gen.get_train_data()
-    seq_gen_test = fake_seq_gen.get_test_data()
+    # fake_batch_size = (batch_size // 3)
+    # fake_seq_gen = WakeSleepGen(f"wake_sleep_data/best_sequence_labels/labels.pt",
+    #                              f"wake_sleep_data/best_sequence_labels/val/labels.pt",
+    #                              batch_size=fake_batch_size,
+    #                              train_size=inference_train_size,
+    #                              test_size=inference_test_size)
+    # seq_gen_train = fake_seq_gen.get_train_data()
+    # seq_gen_test = fake_seq_gen.get_test_data()
 
     model = FIDModel().to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    actual_batch_size = (real_batch_size + (syn_batch_size * 6) + fake_batch_size)
-    labels = torch.cat([torch.zeros(real_batch_size), torch.ones(syn_batch_size * 6),
-                        torch.full((fake_batch_size,), 2)])
-    labels = labels.to(device).long()
+    # actual_batch_size = (real_batch_size + (syn_batch_size * 6) + fake_batch_size)
+    # labels = torch.cat([torch.zeros(real_batch_size), torch.ones(syn_batch_size * 6),
+    #                     torch.full((fake_batch_size,), 2)])
+    labels = torch.cat([torch.zeros(real_batch_size), torch.ones(syn_batch_size * 6)]).view(-1, 1)
+    labels = labels.to(device)
 
     for epoch in range(epochs):
         train_loss = 0
@@ -119,9 +123,10 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             real_batch = torch.from_numpy(next(real_gen_train)[-1, :, 0:1, :, :]).to(device)
             syn_batch = get_syn_batch(syn_gen_train)
-            seq_batch = next(seq_gen_train)[0][-1, :, 0:1, :, :].to(device)
+            #seq_batch = next(seq_gen_train)[0][-1, :, 0:1, :, :].to(device)
             # each batch is 1/3 synthetic, 1/3 real, 1/3 fake generated
-            batch = torch.cat([real_batch, syn_batch, seq_batch])
+            # batch = torch.cat([real_batch, syn_batch, seq_batch])
+            batch = torch.cat([real_batch, syn_batch])
             logits = model(batch)
             loss = model.loss_function(logits, labels)
             train_loss += float(loss)
@@ -134,12 +139,11 @@ if __name__ == '__main__':
             with torch.no_grad():
                 real_batch = torch.from_numpy(next(real_gen_test)[-1, :, 0:1, :, :]).to(device)
                 syn_batch = get_syn_batch(syn_gen_test)
-                seq_batch = next(seq_gen_test)[0][-1, :, 0:1, :, :].to(device)
                 # each batch is 1/3 synthetic, 1/3 real, 1/3 fake generated
-                batch = torch.cat([real_batch, syn_batch, seq_batch])
+                batch = torch.cat([real_batch, syn_batch])
                 logits = model(batch)
                 loss = model.loss_function(logits, labels)
                 test_loss += float(loss)
         print(f"average test loss {epoch}: {test_loss / (inference_test_size // batch_size)}")
 
-    torch.save(model.state_dict(), f"trained_models/fid-model-latest.pth")
+    torch.save(model.state_dict(), f"trained_models/fid-model-two.pth")

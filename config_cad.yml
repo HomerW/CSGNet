@@ -1,7 +1,7 @@
 comment = "Write some meaningful comments that can be used in future to identify the intents of running this experiment."
 
 [train]
-model_path = cad_perturb{}
+model_path = cad{}
 
 # Whether to load a pretrained model or not
 preload_model = True

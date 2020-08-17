@@ -30,7 +30,7 @@ beam_width = 10
 Infer programs on cad dataset
 """
 def infer_programs(imitate_net, path):
-    save_viz = False
+    save_viz = True
 
     config = read_config.Config("config_cad.yml")
 

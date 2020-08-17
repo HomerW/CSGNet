@@ -22,7 +22,12 @@ max_len = 13
 Trains CSGNet to convergence on samples from generator network
 TODO: train to convergence and not number of epochs
 """
-def train_inference(imitate_net, path):
+def train_inference(imitate_net, path, max_epochs=None):
+    if max_epochs is None:
+        epochs = 100
+    else:
+        epochs = max_epochs
+
     config = read_config.Config("config_synthetic.yml")
 
     generator = WakeSleepGen(f"{path}/labels.pt",
@@ -55,7 +60,8 @@ def train_inference(imitate_net, path):
     patience = 5
     num_worse = 0
 
-    for epoch in range(100):
+    for epoch in range(epochs):
+        start = time.time()
         train_loss = 0
         imitate_net.train()
         for batch_idx in range(inference_train_size //
@@ -152,6 +158,9 @@ def train_inference(imitate_net, path):
         # print(f"PREDICTED PROGRAMS: {pred_programs}")
         # print(f"RATIO: {correct_programs/pred_programs}")
 
+        end = time.time()
+        print(f"Inference train time {end-start}")
+
         del test_losses, outputs, test_outputs
 
-    return 100
+    return epochs

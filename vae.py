@@ -18,20 +18,25 @@ from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer
 from globals import device
 
 class VAE(nn.Module):
-    def __init__(self, hidden_dim, latent_dim, vocab_size):
+    def __init__(self):
         super(VAE, self).__init__()
 
+        vocab_size = 400
+        input_dim = 128
+        hidden_dim = 2048
+        latent_dim = 20
+
         self.relu = nn.ReLU()
-        self.encode_embed = nn.Embedding(vocab_size, hidden_dim)
-        self.decode_embed = nn.Embedding(vocab_size, hidden_dim)
-        self.encode_gru = nn.GRU(hidden_dim, hidden_dim)
-        self.encode_mu = nn.Linear(hidden_dim, latent_dim)
-        self.encode_logvar = nn.Linear(hidden_dim, latent_dim)
-        self.decode_gru = nn.GRU(latent_dim+hidden_dim, hidden_dim)
+        self.encode_embed = nn.Embedding(vocab_size, input_dim)
+        self.decode_embed = nn.Embedding(vocab_size, input_dim)
+        self.encode_gru = nn.GRU(input_dim, input_dim)
+        self.encode_mu = nn.Linear(input_dim, latent_dim)
+        self.encode_logvar = nn.Linear(input_dim, latent_dim)
+        self.decode_gru = nn.GRU(latent_dim+input_dim, hidden_dim)
         #self.decode_gru = nn.GRU(latent_dim, hidden_dim)
         self.dense_1 = nn.Linear(hidden_dim, hidden_dim)
         self.dense_output = nn.Linear(hidden_dim, vocab_size)
-        self.initial_encoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
+        self.initial_encoder_state = nn.Parameter(torch.randn((1, 1, input_dim)))
         self.initial_decoder_state = nn.Parameter(torch.randn((1, 1, hidden_dim)))
 
     def encode(self, labels):
