@@ -9,14 +9,11 @@ import os
 import json
 import numpy as np
 import torch
-from src.Models.models_perturb import ParseModelOutput
-# from src.Models.models import ParseModelOutput
+from src.Models.models import ParseModelOutput
 from src.utils import read_config
 import sys
-from src.Models.models_perturb import ImitateJoint
-from src.Models.models_perturb import Encoder
-# from src.Models.models import ImitateJoint
-# from src.Models.models import Encoder
+from src.Models.models import ImitateJoint
+from src.Models.models import Encoder
 from src.utils.generators.shapenet_generater import Generator
 from src.utils.reinforce import Reinforce
 from src.utils.train_utils import prepare_input_op, beams_parser, validity, image_from_expressions
@@ -48,17 +45,16 @@ imitate_net = ImitateJoint(
     encoder=encoder_net,
     mode=config.mode,
     num_draws=len(unique_draw),
-    canvas_shape=config.canvas_shape,
-    teacher_force=True)
+    canvas_shape=config.canvas_shape)
 imitate_net.cuda()
 imitate_net.epsilon = config.eps
 
 max_len = 13
-beam_width = 1
+beam_width = 10
 config.test_size = 3000
 imitate_net.eval()
 imitate_net.epsilon = 0
-paths = [config.pretrain_modelpath]
+paths = ["trained_models/cad2.pth"]
 parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
 for p in paths:
@@ -122,17 +118,6 @@ for p in paths:
                 beam_labels_numpy[i * beam_width:(
                     i + 1) * beam_width, :] = beam_labels[i]
 
-            # get perturbations with forward pass of model
-            bl = np.pad(beam_labels_numpy, ((0, 0), (0, 1)), constant_values=399)
-            one_hot_labels = prepare_input_op(bl, len(unique_draw))
-            one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
-            perturb_out = []
-            for i in range(beam_width):
-                perturb = imitate_net([data, one_hot_labels[i*config.batch_size:(i+1)*config.batch_size], max_len])[1]
-                perturb_out.append(perturb)
-            perturb_out = torch.cat(perturb_out, dim=1)
-
-
             # find expression from these predicted beam labels
             expressions = [""] * config.batch_size * beam_width
             for i in range(config.batch_size * beam_width):
@@ -142,8 +127,7 @@ for p in paths:
                 expressions[index] = prog.split("$")[0]
 
             pred_expressions += expressions
-            predicted_images = image_from_expressions(parser, expressions, perturb_out)
-            #predicted_images = image_from_expressions(parser, expressions)
+            predicted_images = image_from_expressions(parser, expressions)
             target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
             target_images_new = np.repeat(
                 target_images, axis=0, repeats=beam_width)

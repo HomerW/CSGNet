@@ -13,7 +13,7 @@ from src.Models.models import Encoder
 from src.utils.generators.shapenet_generater import Generator
 from src.utils.learn_utils import LearningRate
 from src.utils.reinforce import Reinforce
-from src.utils.train_utils import prepare_input_op
+from src.utils.train_utils import prepare_input_op, chamfer
 import time
 
 if len(sys.argv) > 1:
@@ -170,7 +170,7 @@ for epoch in range(config.epochs):
     imitate_net.eval()
     imitate_net.epsilon = 0
     for batch_idx in range(config.test_size // config.batch_size):
-        parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
+        parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                           config.canvas_shape)
         with torch.no_grad():
             loss = Variable(torch.zeros(1)).cuda()
@@ -191,11 +191,13 @@ for epoch in range(config.epochs):
             R = R[0]
             loss = loss + reinforce.pg_loss_var(R, samples, outputs)
 
+            imitate_net.mode = 1
             test_outputs = imitate_net.test([data, one_hot_labels, max_len])
             pred_images, correct_prog, pred_prog = parser.get_final_canvas(
-                test_output, if_just_expressions=False, if_pred_images=True)
+                test_outputs, if_just_expressions=False, if_pred_images=True)
             target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
             CD += np.sum(chamfer(target_images, pred_images))
+            imitate_net.mode = 2
 
             if reward == "chamfer":
                 Rs = Rs + R
@@ -209,7 +211,7 @@ for epoch in range(config.epochs):
     total_reward = total_reward / (config.test_size // config.batch_size)
 
     test_loss = test_losses.cpu().numpy() / (config.test_size // config.batch_size)
-    test_cd = CD / (config.test_size // config.batch_size)
+    test_cd = CD / config.test_size
     print('test_loss', test_loss, epoch)
     print('test_reward', total_reward, epoch)
     if config.lr_sch:
