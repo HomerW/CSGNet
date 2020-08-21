@@ -13,7 +13,7 @@ from src.Models.models import Encoder
 from src.utils.generators.shapenet_generater import Generator
 from src.utils.learn_utils import LearningRate
 from src.utils.reinforce import Reinforce
-from src.utils.train_utils import prepare_input_op, chamfer
+from src.utils.train_utils import prepare_input_op, chamfer, beams_parser, validity, image_from_expressions
 import time
 
 if len(sys.argv) > 1:
@@ -100,6 +100,42 @@ imitate_net.epsilon = config.eps
 # Number of batches to accumulate before doing the gradient update.
 num_traj = config.num_traj
 training_reward_save = 0
+
+
+def get_cd(imitate_net, data, one_hot_labels):
+    beam_width = 10
+    all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
+        [data, one_hot_labels], beam_width, 13)
+
+    beam_labels = beams_parser(
+        all_beams, config.batch_size, beam_width=beam_width)
+
+    beam_labels_numpy = np.zeros(
+        (config.batch_size * beam_width, 13), dtype=np.int32)
+    for i in range(config.batch_size):
+        beam_labels_numpy[i * beam_width:(
+            i + 1) * beam_width, :] = beam_labels[i]
+
+    # find expression from these predicted beam labels
+    expressions = [""] * config.batch_size * beam_width
+    for i in range(config.batch_size * beam_width):
+        for j in range(13):
+            expressions[i] += unique_draw[beam_labels_numpy[i, j]]
+    for index, prog in enumerate(expressions):
+        expressions[index] = prog.split("$")[0]
+
+    predicted_images = image_from_expressions(parser, expressions)
+    target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
+    target_images_new = np.repeat(
+        target_images, axis=0, repeats=beam_width)
+
+    beam_CD = chamfer(target_images_new, predicted_images)
+
+    CD = np.zeros((config.batch_size, 1))
+    for r in range(config.batch_size):
+        CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
+
+    return np.mean(CD)
 
 for epoch in range(config.epochs):
     start = time.time()
@@ -192,11 +228,7 @@ for epoch in range(config.epochs):
             loss = loss + reinforce.pg_loss_var(R, samples, outputs)
 
             imitate_net.mode = 1
-            test_outputs = imitate_net.test([data, one_hot_labels, max_len])
-            pred_images, correct_prog, pred_prog = parser.get_final_canvas(
-                test_outputs, if_just_expressions=False, if_pred_images=True)
-            target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-            CD += np.sum(chamfer(target_images, pred_images))
+            CD += get_cd(imitate_net, data, one_hot_labels)
             imitate_net.mode = 2
 
             if reward == "chamfer":
@@ -211,7 +243,7 @@ for epoch in range(config.epochs):
     total_reward = total_reward / (config.test_size // config.batch_size)
 
     test_loss = test_losses.cpu().numpy() / (config.test_size // config.batch_size)
-    test_cd = CD / config.test_size
+    test_cd = CD / (config.test_size // config.batch_size)
     print('test_loss', test_loss, epoch)
     print('test_reward', total_reward, epoch)
     if config.lr_sch:
