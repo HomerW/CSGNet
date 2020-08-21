@@ -33,8 +33,8 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
     else:
         epochs = max_epochs
 
-    # labels = torch.load(f"{load_path}/labels/labels.pt", map_location=device)
-    labels = torch.load("wake_sleep_data/inference/best_simple_labels/labels/labels.pt", map_location=device)
+    labels = torch.load(f"{load_path}/labels/labels.pt", map_location=device)
+    # labels = torch.load("wake_sleep_data/inference/best_simple_labels/labels/labels.pt", map_location=device)
 
     # pad with a start and stop token
     labels = np.pad(labels, ((0, 0), (1, 1)), constant_values=399)
@@ -49,7 +49,6 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
     patience = 5
     num_worse = 0
     best_gen_dict = generator_net.state_dict()
-
 
     for epoch in range(epochs):
         start = time.time()
@@ -119,10 +118,10 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
     os.makedirs(os.path.dirname(f"{save_path}/val/"), exist_ok=True)
     torch.save(test_tokens, f"{save_path}/val/labels.pt")
 
-    fid_value = calculate_fid_given_paths(f"{save_path}",
-                                          f"trained_models/fid-model-two.pth",
-                                          100)
-    print('FID: ', fid_value)
+    # fid_value = calculate_fid_given_paths(f"{save_path}",
+    #                                       f"trained_models/fid-model-two.pth",
+    #                                       100)
+    # print('FID: ', fid_value)
 
     return epoch + 1
 
@@ -231,10 +230,9 @@ def wake_sleep(iterations):
         else:
             infer_path = "wake_sleep_data/inference"
             generate_path = "wake_sleep_data/generator"
+            infer_programs(imitate_net, infer_path)
 
-        infer_programs(imitate_net, infer_path)
-
-        imitate_net = get_blank_csgnet()
+        # imitate_net = get_blank_csgnet()
 
         gen_epochs += train_generator(generator_net, infer_path, generate_path)
         inf_epochs += train_inference(imitate_net, generate_path)
