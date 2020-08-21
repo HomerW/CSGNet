@@ -126,6 +126,24 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
 
     return epoch + 1
 
+def get_blank_csgnet():
+    config = read_config.Config("config_synthetic.yml")
+
+    # Encoder
+    encoder_net = Encoder(config.encoder_drop)
+    encoder_net = encoder_net.to(device)
+
+    imitate_net = ImitateJoint(
+        hd_sz=config.hidden_size,
+        input_size=config.input_size,
+        encoder=encoder_net,
+        mode=config.mode,
+        num_draws=400,
+        canvas_shape=config.canvas_shape)
+    imitate_net = imitate_net.to(device)
+
+    return imitate_net
+
 """
 Get initial pretrained CSGNet inference network
 """
@@ -213,7 +231,10 @@ def wake_sleep(iterations):
         else:
             infer_path = "wake_sleep_data/inference"
             generate_path = "wake_sleep_data/generator"
-            infer_programs(imitate_net, infer_path)
+
+        infer_programs(imitate_net, infer_path)
+
+        imitate_net = get_blank_csgnet()
 
         gen_epochs += train_generator(generator_net, infer_path, generate_path)
         inf_epochs += train_inference(imitate_net, generate_path)
