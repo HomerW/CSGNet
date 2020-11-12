@@ -80,7 +80,7 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
         #     torch.save(sample_tokens, f"wake_sleep_data/generator/tmp/labels.pt")
         #     torch.save(sample_tokens, f"wake_sleep_data/generator/tmp/val/labels.pt")
         #     fid_value = calculate_fid_given_paths(f"wake_sleep_data/generator/tmp",
-        #                                           "trained_models/fid-model-two.pth",
+        #                                           "trained_models/fid-model-three.pth",
         #                                           100,
         #                                           32)
         #     print('FID: ', fid_value)
@@ -118,10 +118,10 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
     os.makedirs(os.path.dirname(f"{save_path}/val/"), exist_ok=True)
     torch.save(test_tokens, f"{save_path}/val/labels.pt")
 
-    # fid_value = calculate_fid_given_paths(f"{save_path}",
-    #                                       f"trained_models/fid-model-two.pth",
-    #                                       100)
-    # print('FID: ', fid_value)
+    fid_value = calculate_fid_given_paths(f"{save_path}",
+                                          f"trained_models/fid-model-two.pth",
+                                          100)
+    print('FID: ', fid_value)
 
     return epoch + 1
 
@@ -234,8 +234,8 @@ def wake_sleep(iterations):
 
         # imitate_net = get_blank_csgnet()
 
-        gen_epochs += train_generator(generator_net, infer_path, generate_path)
-        inf_epochs += train_inference(imitate_net, generate_path)
+        gen_epochs += train_generator(generator_net, infer_path, generate_path, 1)
+        inf_epochs += train_inference(imitate_net, generate_path, 1)
 
         torch.save(imitate_net.state_dict(), f"trained_models/imitate.pth")
         torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
@@ -248,4 +248,4 @@ def wake_sleep(iterations):
         #     break
 
 # load_infer()
-wake_sleep(10000)
+wake_sleep(200)

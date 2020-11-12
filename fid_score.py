@@ -235,7 +235,7 @@ def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
 
 
 if __name__ == '__main__':
-    fid_value = calculate_fid_given_paths("wake_sleep_data_tree/generator/0",
-                                          "trained_models/fid-model.pth",
+    fid_value = calculate_fid_given_paths("wake_sleep_data/generator/0/",
+                                          "trained_models/fid-model-three.pth",
                                           100)
     print('FID: ', fid_value)
