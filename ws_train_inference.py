@@ -13,6 +13,7 @@ from src.utils.learn_utils import LearningRate
 from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, beams_parser, validity, image_from_expressions, stack_from_expressions
 from globals import device
 import time
+from src.utils.generators.shapenet_generater import Generator
 
 inference_train_size = 10000
 inference_test_size = 3000
@@ -22,7 +23,7 @@ max_len = 13
 Trains CSGNet to convergence on samples from generator network
 TODO: train to convergence and not number of epochs
 """
-def train_inference(imitate_net, path, max_epochs=None):
+def train_inference(imitate_net, path, max_epochs=None, self_training=False):
     if max_epochs is None:
         epochs = 100
     else:
@@ -30,16 +31,21 @@ def train_inference(imitate_net, path, max_epochs=None):
 
     config = read_config.Config("config_synthetic.yml")
 
-    generator = WakeSleepGen(f"{path}/labels.pt",
-                             f"{path}/val/labels.pt",
+    generator = WakeSleepGen(f"{path}/",
                              batch_size=config.batch_size,
                              train_size=inference_train_size,
-                             test_size=inference_test_size,
                              canvas_shape=config.canvas_shape,
-                             max_len=max_len)
+                             max_len=max_len,
+                             self_training=self_training)
 
     train_gen = generator.get_train_data()
-    test_gen = generator.get_test_data()
+
+    cad_generator = Generator()
+    val_gen = cad_generator.val_gen(
+        batch_size=config.batch_size,
+        path="data/cad/cad.h5",
+        if_augment=False)
+
 
     optimizer = optim.Adam(
         [para for para in imitate_net.parameters() if para.requires_grad],
@@ -71,7 +77,7 @@ def train_inference(imitate_net, path, max_epochs=None):
             # acc = 0
             for _ in range(config.num_traj):
                 data, labels = next(train_gen)
-                data = data[:, :, 0:1, :, :]
+                # data = data[:, :, 0:1, :, :]
                 one_hot_labels = prepare_input_op(labels,
                                                   len(generator.unique_draw))
                 one_hot_labels = torch.from_numpy(one_hot_labels).to(device)
@@ -106,24 +112,23 @@ def train_inference(imitate_net, path, max_epochs=None):
             parser = ParseModelOutput(generator.unique_draw, max_len // 2 + 1, max_len,
                               config.canvas_shape)
             with torch.no_grad():
-                data_, labels = next(test_gen)
-                one_hot_labels = prepare_input_op(labels, len(
-                    generator.unique_draw))
-                one_hot_labels = torch.from_numpy(one_hot_labels).to(device)
-                data = data_.to(device)
-                labels = labels.to(device)
+                labels = np.zeros((config.batch_size, max_len), dtype=np.int32)
+                data_ = next(val_gen)
+                one_hot_labels = prepare_input_op(labels, len(generator.unique_draw))
+                one_hot_labels = torch.from_numpy(one_hot_labels).cuda()
+                data = torch.from_numpy(data_).cuda()
                 # outputs = imitate_net([data, one_hot_labels, max_len])
                 # loss_k = (losses_joint(outputs, labels, time_steps=max_len + 1) /
                 #          (max_len + 1))
                 # loss += float(loss_k)
-                test_outputs = imitate_net.test([data, one_hot_labels, max_len])
+                test_outputs = imitate_net.test([data[-1, :, 0, :, :], one_hot_labels, max_len])
                 # acc += float((torch.argmax(torch.stack(test_outputs), dim=2).permute(1, 0) == labels[:, :-1]).float().sum()) \
                 #         / (len(labels) * (max_len+1)) / (inference_test_size // config.batch_size)
                 pred_images, correct_prog, pred_prog = parser.get_final_canvas(
                     test_outputs, if_just_expressions=False, if_pred_images=True)
                 # correct_programs += len(correct_prog)
                 # pred_programs += len(pred_prog)
-                target_images = data_[-1, :, 0, :, :].cpu().numpy().astype(dtype=bool)
+                target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
                 # iou = np.sum(np.logical_and(target_images, pred_images),
                 #              (1, 2)) / \
                 #       np.sum(np.logical_or(target_images, pred_images),

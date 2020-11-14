@@ -212,36 +212,32 @@ Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
     imitate_net = get_csgnet()
-    generator_net = VAE().to(device)
+    # generator_net = VAE().to(device)
 
-    inf_factor = 0
-    gen_factor = 0
     inf_epochs = 0
     gen_epochs = 0
-    allowed_time = 400 # corresponds to epochs of RL
-    infer_time = 0
 
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
 
         if i == 0:
             infer_path = f"wake_sleep_data/inference/0"
-            generate_path = f"wake_sleep_data/generator/0"
+            # generate_path = f"wake_sleep_data/generator/0"
         else:
             infer_path = "wake_sleep_data/inference"
-            generate_path = "wake_sleep_data/generator"
-            infer_programs(imitate_net, infer_path)
+            # generate_path = "wake_sleep_data/generator"
+            infer_programs(imitate_net, infer_path, self_training=False)
 
         # imitate_net = get_blank_csgnet()
 
-        gen_epochs += train_generator(generator_net, infer_path, generate_path, 1)
-        inf_epochs += train_inference(imitate_net, generate_path, 1)
+        # gen_epochs += train_generator(generator_net, infer_path, generate_path, 1)
+        inf_epochs += train_inference(imitate_net, infer_path + "/labels", self_training=False)
 
-        torch.save(imitate_net.state_dict(), f"trained_models/imitate.pth")
-        torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
+        torch.save(imitate_net.state_dict(), f"trained_models/imitate2_{i}.pth")
+        # torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
 
         print(f"Total inference epochs: {inf_epochs}")
-        print(f"Total generator epochs: {gen_epochs}")
+        # print(f"Total generator epochs: {gen_epochs}")
 
         # allowed_time -= infer_time + (inf_factor * inf_epochs) + (gen_factor * gen_epochs)
         # if allowed_time <= 0:

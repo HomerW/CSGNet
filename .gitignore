@@ -11,3 +11,5 @@ wake_sleep_data_tree
 log
 perturbations
 perturbations_more
+*.sh*
+wake_sleep_data_simple

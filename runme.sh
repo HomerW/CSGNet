@@ -11,7 +11,7 @@
 #$ -l gpus=1
 #
 #  Can use up to 6GB of memory
-#$ -l vf=6G
+#$ -l vf=8G
 #
 
 # Using conda to activate a virtual envrionment
@@ -26,4 +26,4 @@ echo $virtual_env activated
 # You don't need to prepend 'CUDA_VISIBLE_DEVICES' here, because GridEngine will ensure
 #    that your script runs in an environment with only a certain number of GPUs visible
 #    (Specifically, the number you requested with '-l gpus')
-python -u train_synthetic_cont2.py > syn.out
+python -u wake-sleep.py > ws2.out
