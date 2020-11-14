@@ -29,7 +29,7 @@ beam_width = 10
 """
 Infer programs on cad dataset
 """
-def infer_programs(imitate_net, path, self_training=False):
+def infer_programs(imitate_net, path, self_training=False, all_beams=False):
     save_viz = True
 
     config = read_config.Config("config_cad.yml")
@@ -42,6 +42,8 @@ def infer_programs(imitate_net, path, self_training=False):
 
     config.train_size = 10000
     config.test_size = 3000
+    if all_beams:
+        config.train_size = config.train_size * beam_width
     imitate_net.eval()
     imitate_net.epsilon = 0
     parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
@@ -123,11 +125,14 @@ def infer_programs(imitate_net, path, self_training=False):
             beam_CD = chamfer(target_images_new, predicted_images)
 
             # select best expression by chamfer distance
-            best_labels = np.zeros((config.batch_size, max_len))
-            for r in range(config.batch_size):
-                idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
-                best_labels[r] = beam_labels[r][idx]
-            pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+            if not all_beams:
+                best_labels = np.zeros((config.batch_size, max_len))
+                for r in range(config.batch_size):
+                    idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
+                    best_labels[r] = beam_labels[r][idx]
+                pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+            else:
+                pred_labels[batch_idx*config.batch_size*beam_width:batch_idx*config.batch_size*beam_width + config.batch_size*beam_width] = beam_labels_numpy
 
             CD = np.zeros((config.batch_size, 1))
             for r in range(config.batch_size):
