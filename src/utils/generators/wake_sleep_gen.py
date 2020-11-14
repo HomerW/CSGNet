@@ -73,9 +73,10 @@ class WakeSleepGen:
                     if validity(program, len(program), len(program) - 1):
                         self.correct_programs.append(index)
                     else:
-                        stack = np.zeros(
-                            (self.max_len + 1, self.max_len // 2 + 1, self.canvas_shape[0],
-                             self.canvas_shape[1]))
+                        # stack = np.zeros(
+                        #     (self.max_len + 1, self.max_len // 2 + 1, self.canvas_shape[0],
+                        #      self.canvas_shape[1]))
+                        stack = np.zeros((64, 64))
                         stacks.append(stack)
                         continue
 

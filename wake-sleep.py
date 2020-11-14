@@ -221,19 +221,19 @@ def wake_sleep(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
 
         if i == 0:
-            infer_path = f"wake_sleep_data/inference/0"
+            infer_path = f"wake_sleep_data_st_ab/inference/0"
             # generate_path = f"wake_sleep_data/generator/0"
         else:
-            infer_path = "wake_sleep_data/inference"
+            infer_path = "wake_sleep_data_st_ab/inference"
             # generate_path = "wake_sleep_data/generator"
-        infer_programs(imitate_net, infer_path, self_training=False, all_beams=True)
+            infer_programs(imitate_net, infer_path, self_training=True, all_beams=True)
 
         # imitate_net = get_blank_csgnet()
 
         # gen_epochs += train_generator(generator_net, infer_path, generate_path, 1)
-        inf_epochs += train_inference(imitate_net, infer_path + "/labels", self_training=False, all_beams=True)
+        inf_epochs += train_inference(imitate_net, infer_path + "/labels", self_training=True, all_beams=True)
 
-        torch.save(imitate_net.state_dict(), f"trained_models/imitate2_{i}.pth")
+        torch.save(imitate_net.state_dict(), f"trained_models/imitate_st_ab_{i}.pth")
         # torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
 
         print(f"Total inference epochs: {inf_epochs}")

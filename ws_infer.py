@@ -24,13 +24,13 @@ inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
 max_len = 13
-beam_width = 10
+beam_width = 5
 
 """
 Infer programs on cad dataset
 """
 def infer_programs(imitate_net, path, self_training=False, all_beams=False):
-    save_viz = True
+    save_viz = False
 
     config = read_config.Config("config_cad.yml")
 
@@ -42,14 +42,15 @@ def infer_programs(imitate_net, path, self_training=False, all_beams=False):
 
     config.train_size = 10000
     config.test_size = 3000
-    if all_beams:
-        config.train_size = config.train_size * beam_width
     imitate_net.eval()
     imitate_net.epsilon = 0
     parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                               config.canvas_shape)
     pred_expressions = []
-    pred_labels = np.zeros((config.train_size, max_len))
+    if all_beams:
+        pred_labels = np.zeros((config.train_size * beam_width, max_len))
+    else:
+        pred_labels = np.zeros((config.train_size, max_len))
     image_path = f"{path}/images/"
     results_path = f"{path}/results/"
     labels_path = f"{path}/labels/"
@@ -176,7 +177,10 @@ def infer_programs(imitate_net, path, self_training=False, all_beams=False):
 
     torch.save(pred_labels, labels_path + "labels.pt")
     if self_training:
-        torch.save(np.concatenate(Target_images, axis=0), labels_path + "images.pt")
+        if not all_beams:
+            torch.save(np.concatenate(Target_images, axis=0), labels_path + "images.pt")
+        else:
+            torch.save(np.repeat(np.concatenate(Target_images, axis=0), beam_width, axis=0), labels_path + "images.pt")
 
     # pred_expressions = []
     # pred_labels = np.zeros((config.test_size, max_len))

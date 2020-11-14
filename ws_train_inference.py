@@ -18,7 +18,7 @@ from src.utils.generators.shapenet_generater import Generator
 inference_train_size = 10000
 inference_test_size = 3000
 max_len = 13
-beam_width = 10
+beam_width = 5
 
 """
 Trains CSGNet to convergence on samples from generator network
@@ -33,11 +33,13 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, all
     config = read_config.Config("config_synthetic.yml")
 
     if all_beams:
-        inference_train_size = inference_train_size * beam_width
+        train_size = inference_train_size * beam_width
+    else:
+        train_size = inference_train_size
 
     generator = WakeSleepGen(f"{path}/",
                              batch_size=config.batch_size,
-                             train_size=inference_train_size,
+                             train_size=train_size,
                              canvas_shape=config.canvas_shape,
                              max_len=max_len,
                              self_training=self_training)
@@ -74,7 +76,7 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, all
         start = time.time()
         train_loss = 0
         imitate_net.train()
-        for batch_idx in range(inference_train_size //
+        for batch_idx in range(train_size //
                                (config.batch_size * config.num_traj)):
             optimizer.zero_grad()
             loss = 0
@@ -101,7 +103,7 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, all
             print(f"batch {batch_idx} train loss: {loss}")
             # print(f"acc: {acc}")
 
-        mean_train_loss = train_loss / (inference_train_size // (config.batch_size))
+        mean_train_loss = train_loss / (train_size // (config.batch_size))
         print(f"epoch {epoch} mean train loss: {mean_train_loss}")
         imitate_net.eval()
         loss = 0
