@@ -18,13 +18,13 @@ from src.utils.generators.shapenet_generater import Generator
 inference_train_size = 10000
 inference_test_size = 3000
 max_len = 13
-beam_width = 5
+beam_width = 10
 
 """
 Trains CSGNet to convergence on samples from generator network
 TODO: train to convergence and not number of epochs
 """
-def train_inference(imitate_net, path, max_epochs=None, self_training=False, all_beams=False):
+def train_inference(imitate_net, path, max_epochs=None, self_training=False, ab=None):
     if max_epochs is None:
         epochs = 100
     else:
@@ -32,8 +32,8 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, all
 
     config = read_config.Config("config_synthetic.yml")
 
-    if all_beams:
-        train_size = inference_train_size * beam_width
+    if ab is not None:
+        train_size = inference_train_size * ab
     else:
         train_size = inference_train_size
 

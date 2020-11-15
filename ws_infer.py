@@ -24,12 +24,12 @@ inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
 max_len = 13
-beam_width = 5
+beam_width = 10
 
 """
 Infer programs on cad dataset
 """
-def infer_programs(imitate_net, path, self_training=False, all_beams=False):
+def infer_programs(imitate_net, path, self_training=False, ab=None):
     save_viz = False
 
     config = read_config.Config("config_cad.yml")
@@ -47,8 +47,8 @@ def infer_programs(imitate_net, path, self_training=False, all_beams=False):
     parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                               config.canvas_shape)
     pred_expressions = []
-    if all_beams:
-        pred_labels = np.zeros((config.train_size * beam_width, max_len))
+    if ab is not None:
+        pred_labels = np.zeros((config.train_size * ab, max_len))
     else:
         pred_labels = np.zeros((config.train_size, max_len))
     image_path = f"{path}/images/"
@@ -126,14 +126,18 @@ def infer_programs(imitate_net, path, self_training=False, all_beams=False):
             beam_CD = chamfer(target_images_new, predicted_images)
 
             # select best expression by chamfer distance
-            if not all_beams:
+            if ab is None:
                 best_labels = np.zeros((config.batch_size, max_len))
                 for r in range(config.batch_size):
                     idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
                     best_labels[r] = beam_labels[r][idx]
                 pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
             else:
-                pred_labels[batch_idx*config.batch_size*beam_width:batch_idx*config.batch_size*beam_width + config.batch_size*beam_width] = beam_labels_numpy
+                best_labels = np.zeros((config.batch_size*ab, max_len))
+                for r in range(config.batch_size):
+                    sorted_idx = np.argsort(beam_CD[r * beam_width:(r + 1) * beam_width])[:ab]
+                    best_labels[r*ab:r*ab + ab] = beam_labels[r][sorted_idx]
+                pred_labels[batch_idx*config.batch_size*ab:batch_idx*config.batch_size*ab + config.batch_size*ab] = best_labels
 
             CD = np.zeros((config.batch_size, 1))
             for r in range(config.batch_size):
@@ -177,10 +181,10 @@ def infer_programs(imitate_net, path, self_training=False, all_beams=False):
 
     torch.save(pred_labels, labels_path + "labels.pt")
     if self_training:
-        if not all_beams:
+        if ab is None:
             torch.save(np.concatenate(Target_images, axis=0), labels_path + "images.pt")
         else:
-            torch.save(np.repeat(np.concatenate(Target_images, axis=0), beam_width, axis=0), labels_path + "images.pt")
+            torch.save(np.repeat(np.concatenate(Target_images, axis=0), ab, axis=0), labels_path + "images.pt")
 
     # pred_expressions = []
     # pred_labels = np.zeros((config.test_size, max_len))
