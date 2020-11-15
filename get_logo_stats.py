@@ -94,6 +94,23 @@ def infer_programs(imitate_net, self_training=False, ab=None):
 
             CDs += np.mean(CD)
 
+            for j in range(0, config.batch_size):
+                f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
+                a[0].imshow(data_[j], cmap="Greys_r")
+                a[0].axis("off")
+                a[0].set_title("target")
+                for i in range(1, beam_width + 1):
+                    a[i].imshow(
+                        predicted_images[j * beam_width + i - 1],
+                        cmap="Greys_r")
+                    a[i].set_title("{}".format(i))
+                    a[i].axis("off")
+                plt.savefig(
+                    "logo_images/" +
+                    "{}.png".format(batch_idx * config.batch_size + j),
+                    transparent=0)
+                plt.close("all")
+
     return CDs / (config.test_size // config.batch_size)
 
 config = read_config.Config("config_synthetic.yml")
