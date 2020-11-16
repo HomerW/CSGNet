@@ -99,6 +99,26 @@ def infer_programs(imitate_net, self_training=False, ab=None):
 
             CDs += np.mean(CD)
 
+            # for j in range(0, config.batch_size):
+            #     f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
+            #     a[0].imshow(data_[-1, j, 0, :, :], cmap="Greys_r")
+            #     a[0].axis("off")
+            #     a[0].set_title("target")
+            #     for i in range(1, beam_width + 1):
+            #         a[i].imshow(
+            #             predicted_images[j * beam_width + i - 1],
+            #             cmap="Greys_r")
+            #         a[i].set_title("{}".format(i))
+            #         a[i].axis("off")
+            #     plt.savefig(
+            #         "best_st/" +
+            #         "{}.png".format(batch_idx * config.batch_size + j),
+            #         transparent=0)
+            #     plt.close("all")
+            with open("best_lest_expressions.txt", "w") as file:
+                for e in pred_expressions:
+                    file.write(f"{e}\n")
+
     return CDs / (config.test_size // config.batch_size)
 
 config = read_config.Config("config_synthetic.yml")
@@ -114,25 +134,39 @@ imitate_net = ImitateJoint(
     canvas_shape=config.canvas_shape)
 imitate_net = imitate_net.to(device)
 
-cd_list = []
-for i in range(100):
-    try:
-        pretrained_dict = torch.load(f"trained_models/imitate_ab_{i}.pth", map_location=device)
-    except Exception as e:
-        print(e)
-        break
-    imitate_net_dict = imitate_net.state_dict()
-    pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in imitate_net_dict
-    }
-    imitate_net_dict.update(pretrained_dict)
-    imitate_net.load_state_dict(imitate_net_dict)
+try:
+    pretrained_dict = torch.load(f"trained_models/imitate2_30.pth", map_location=device)
+except Exception as e:
+    print(e)
+imitate_net_dict = imitate_net.state_dict()
+pretrained_dict = {
+    k: v
+    for k, v in pretrained_dict.items() if k in imitate_net_dict
+}
+imitate_net_dict.update(pretrained_dict)
+imitate_net.load_state_dict(imitate_net_dict)
 
-    cd = infer_programs(imitate_net)
-    print(f"TEST CD: {cd}")
-    cd_list.append(cd)
+infer_programs(imitate_net)
 
-    with open("ws_ab_test.txt", "w") as file:
-        for c in cd_list:
-            file.write(f"{c}\n")
+# cd_list = []
+# for i in range(100):
+#     try:
+#         pretrained_dict = torch.load(f"trained_models/imitate_ab_{i}.pth", map_location=device)
+#     except Exception as e:
+#         print(e)
+#         break
+#     imitate_net_dict = imitate_net.state_dict()
+#     pretrained_dict = {
+#         k: v
+#         for k, v in pretrained_dict.items() if k in imitate_net_dict
+#     }
+#     imitate_net_dict.update(pretrained_dict)
+#     imitate_net.load_state_dict(imitate_net_dict)
+#
+#     cd = infer_programs(imitate_net)
+#     print(f"TEST CD: {cd}")
+#     cd_list.append(cd)
+#
+#     with open("ws_ab_test.txt", "w") as file:
+#         for c in cd_list:
+#             file.write(f"{c}\n")

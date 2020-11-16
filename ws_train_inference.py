@@ -14,6 +14,7 @@ from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, 
 from globals import device
 import time
 from src.utils.generators.shapenet_generater import Generator
+from copy import deepcopy
 
 inference_train_size = 10000
 inference_test_size = 3000
@@ -65,7 +66,7 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, ab=
         patience=config.patience)
 
     best_test_loss = 1e20
-    best_imitate_dict = imitate_net.state_dict()
+    torch.save(imitate_net.state_dict(), f"{path}/best_dict.pth")
 
     best_test_cd = 1e20
 
@@ -157,10 +158,10 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, ab=
         else:
             num_worse = 0
             best_test_cd = metrics["cd"]
-            best_imitate_dict = imitate_net.state_dict()
+            torch.save(imitate_net.state_dict(), f"{path}/best_dict.pth")
         if num_worse >= patience:
             # load the best model and stop training
-            imitate_net.load_state_dict(best_imitate_dict)
+            imitate_net.load_state_dict(torch.load(f"{path}/best_dict.pth"))
             return epoch + 1
 
         # reduce_plat.reduce_on_plateu(metrics["cd"])

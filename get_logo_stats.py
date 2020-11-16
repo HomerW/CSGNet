@@ -106,7 +106,7 @@ def infer_programs(imitate_net, self_training=False, ab=None):
                     a[i].set_title("{}".format(i))
                     a[i].axis("off")
                 plt.savefig(
-                    "logo_images/" +
+                    "logo_images_earlier/" +
                     "{}.png".format(batch_idx * config.batch_size + j),
                     transparent=0)
                 plt.close("all")
@@ -127,7 +127,7 @@ imitate_net = ImitateJoint(
 imitate_net = imitate_net.to(device)
 
 try:
-    pretrained_dict = torch.load(f"trained_models/imitate_ab_1.pth", map_location=device)
+    pretrained_dict = torch.load(f"trained_models/imitate2_5.pth", map_location=device)
 except Exception as e:
     print(e)
 imitate_net_dict = imitate_net.state_dict()
