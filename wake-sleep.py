@@ -163,8 +163,8 @@ def get_csgnet():
     imitate_net = imitate_net.to(device)
 
     print("pre loading model")
-    # pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
-    pretrained_dict = torch.load("trained_models/imitate2_10.pth", map_location=device)
+    pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
+    # pretrained_dict = torch.load("trained_models/imitate2_10.pth", map_location=device)
     imitate_net_dict = imitate_net.state_dict()
     pretrained_dict = {
         k: v
@@ -218,7 +218,7 @@ def wake_sleep(iterations):
     inf_epochs = 0
     gen_epochs = 0
 
-    for i in range(11, iterations):
+    for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
 
         if i == 0:
