@@ -1,6 +1,6 @@
 """Defines the configuration to be loaded before running any experiment"""
 
-from configobj import ConfigObj
+#from configobj import ConfigObj
 import string
 
 
@@ -12,68 +12,83 @@ class Config(object):
         """
 
         self.filename = filename
-        config = ConfigObj(self.filename)
+        config = {'train':{}}
+        with open(self.filename) as f:
+            for line in f:
+                ls = line.split()
+                if len(ls) == 0:
+                    continue
+                if ls[0][0] == '#':
+                    continue
+                if ls[0][0] == '[':
+                    continue
+
+                key = line.split()[0]
+                value = line.split()[2]
+                config['train'][key] = value
+                
+                    
         self.config = config
 
         # Comments on the experiments running
-        self.comment = config["comment"]
+        self.comment = 'blah'
 
         # Model name and location to store
         self.model_path = config["train"]["model_path"]
 
         # Whether to load a pretrained model or not
-        self.preload_model = config["train"].as_bool("preload_model")
+        self.preload_model = bool(config["train"]["preload_model"])
 
         # path to the model
         self.pretrain_modelpath = config["train"]["pretrain_model_path"]
 
         # Number of batches to be collected before the network update
-        self.num_traj = config["train"].as_int("num_traj")
+        self.num_traj = int(config["train"]["num_traj"])
 
         # Number of epochs to run during training
-        self.epochs = config["train"].as_int("num_epochs")
+        self.epochs = int(config["train"]["num_epochs"])
 
         # batch size, based on the GPU memory
-        self.batch_size = config["train"].as_int("batch_size")
+        self.batch_size = int(config["train"]["batch_size"])
 
         # hidden size of RNN
-        self.hidden_size = config["train"].as_int("hidden_size")
+        self.hidden_size = int(config["train"]["hidden_size"])
 
         # Output feature size from CNN
-        self.input_size = config["train"].as_int("input_size")
+        self.input_size = int(config["train"]["input_size"])
 
         # Mode of training, 1: supervised, 2: RL
-        self.mode = config["train"].as_int("mode")
+        self.mode = int(config["train"]["mode"])
 
         # Learning rate
-        self.lr = config["train"].as_float("lr")
+        self.lr = float(config["train"]["lr"])
 
         # Encoder drop
-        self.encoder_drop = config["train"].as_float("encoder_drop")
+        self.encoder_drop = float(config["train"]["encoder_drop"])
 
         # l2 Weight decay
-        self.weight_decay = config["train"].as_float("weight_decay")
+        self.weight_decay = float(config["train"]["weight_decay"])
 
         # dropout for Decoder network
-        self.dropout = config["train"].as_float("dropout")
+        self.dropout = float(config["train"]["dropout"])
 
         # Number of epochs to wait before decaying the learning rate.
-        self.patience = config["train"].as_int("patience")
+        self.patience = int(config["train"]["patience"])
 
         # Optimizer: RL training -> "sgd" or supervised training -> "adam"
         self.optim = config["train"]["optim"]
 
         # Proportion of the dataset to be used while training, use 100
-        self.proportion = config["train"].as_int("proportion")
+        self.proportion = int(config["train"]["proportion"])
 
         # Epsilon for the RL training, not applicable in Supervised training
-        self.eps = config["train"].as_float("epsilon")
+        self.eps = float(config["train"]["epsilon"])
 
         # Whether to schedule the learning rate or not
-        self.lr_sch = config["train"].as_bool("lr_sch")
+        self.lr_sch = bool(config["train"]["lr_sch"])
 
         # Canvas shape, keep it [64, 64]
-        self.canvas_shape = [config["train"].as_int("canvas_shape")] * 2
+        self.canvas_shape = [int(config["train"]["canvas_shape"])] * 2
 
     def write_config(self, filename):
         """
