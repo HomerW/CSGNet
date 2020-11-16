@@ -28,6 +28,7 @@ Infer programs on cad dataset
 """
 
 NUM_WRITE = 10
+ab = 5
 
 def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_training):    
     config = read_config.Config("config_cad.yml")
@@ -75,7 +76,7 @@ def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_trai
                                    
     start = time.time()
 
-    pred_labels = np.zeros((config.train_size, max_len))
+    pred_labels = np.zeros((config.train_size * 5, max_len))
     Target_images = []
 
     results = {}
@@ -130,11 +131,12 @@ def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_trai
                 beam_CD = chamfer(target_images_new, predicted_images)
 
                 if do_write:
-                    best_labels = np.zeros((config.batch_size, max_len))
-                    for r in range(config.batch_size):
-                        idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
-                        best_labels[r] = beam_labels[r][idx]
-                    pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
+                    best_labels = np.zeros((config.batch_size*ab, max_len))
+                    for r in range(config.batch_size):                        
+                        sorted_idx = np.argsort(beam_CD[r * beam_width:(r + 1) * beam_width])[:ab]
+                        best_labels[r*ab:r*ab + ab] = beam_labels[r][sorted_idx]
+
+                    pred_labels[batch_idx*config.batch_size*ab:batch_idx*config.batch_size*ab + config.batch_size*ab] = best_labels
 
             CD = np.zeros((config.batch_size, 1))
             for r in range(config.batch_size):

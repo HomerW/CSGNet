@@ -18,9 +18,10 @@ from src.utils.generators.shapenet_generater import Generator
 max_len = 13
 beam_width = 10
 THRESH = .001
-PAT = 5
+PAT = 8
 LR = 0.001
 EVAL_PER = 5
+ab = 5
 
 def train_inference(imitate_net, path, num_train, num_test, batch_size, self_training, round, mode):
 
@@ -30,7 +31,7 @@ def train_inference(imitate_net, path, num_train, num_test, batch_size, self_tra
     config.lr = LR
     patience = PAT
     
-    train_size = num_train
+    train_size = num_train * ab
 
     generator = WakeSleepGen(
         f"{path}/",
@@ -78,7 +79,7 @@ def train_inference(imitate_net, path, num_train, num_test, batch_size, self_tra
         train_loss = 0
         
         imitate_net.train()
-        for batch_idx in range(train_size // config.batch_size):            
+        for batch_idx in range(train_size // config.batch_size):
             optimizer.zero_grad()
             loss = 0
             data, labels = next(train_gen)
