@@ -134,53 +134,6 @@ class ImitateJoint(nn.Module):
             output = self.tf_logsoftmax(self.dense_output(self.drop(output)))
             return output
 
-        elif self.mode == 2:
-            '''Train variable length RL'''
-            # program length in this case is the maximum time step that RNN runs
-            data, input_op, program_len = x
-            batch_size = data.size()[1]
-            h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
-            x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
-            x_f = x_f.view(1, batch_size, self.in_sz)
-            outputs = []
-            samples = []
-            temp_input_op = input_op[:, 0, :]
-            for timestep in range(0, program_len):
-                # X_f is the input to the RNN at every time step along with previous
-                # predicted label
-                input_op_rnn = self.relu(self.dense_input_op(temp_input_op))
-                input_op_rnn = input_op_rnn.view(1, batch_size,
-                                                 self.input_op_sz)
-                input = torch.cat((x_f, input_op_rnn), 2)
-                h, _ = self.rnn(input, h)
-                hd = self.relu(self.dense_fc_1(self.drop(h[0])))
-                dense_output = self.dense_output(self.drop(hd))
-                output = self.logsoftmax(dense_output)
-                # output for loss, these are log-probabs
-                outputs.append(output)
-
-                output_probs = self.softmax(dense_output)
-                # Get samples from output probabs based on epsilon greedy way
-                # Epsilon will be reduced to 0 gradually following some schedule
-                if np.random.rand() < self.epsilon:
-                    # This is during training
-                    sample = torch.multinomial(output_probs, 1)
-                else:
-                    # This is during testing
-                    sample = torch.max(output_probs, 1)[1].view(
-                        batch_size, 1)
-
-                # Stopping the gradient to flow backward from samples
-                sample = sample.detach()
-                samples.append(sample)
-
-                # Create next input to the RNN from the sampled instructions
-                arr = Variable(
-                    torch.zeros(batch_size, self.num_draws + 1).scatter_(
-                        1, sample.data.cpu(), 1.0)).cuda()
-                arr = arr.detach()
-                temp_input_op = arr
-            return [outputs, samples]
         else:
             assert False, "Incorrect mode!!"
 

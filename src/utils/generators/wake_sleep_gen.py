@@ -13,11 +13,11 @@ class WakeSleepGen:
 
     def __init__(self,
                  labels_path,
-                 batch_size=100,
-                 train_size=10000,
-                 canvas_shape=[64, 64],
-                 max_len=13,
-                 self_training=False):
+                 batch_size,
+                 train_size,
+                 canvas_shape,
+                 max_len,
+                 self_training):
 
         self.labels = torch.load(labels_path + "labels.pt", map_location=device)
         if isinstance(self.labels, np.ndarray):
@@ -31,7 +31,7 @@ class WakeSleepGen:
         # pad labels with a stop symbol, should be correct but need to confirm this
         # since infer_programs currently outputs len 13 labels
         self.labels = F.pad(self.labels, (0, 1), 'constant', 399)
-
+        
         self.train_size = train_size
         self.max_len = max_len
         self.canvas_shape = canvas_shape
@@ -51,15 +51,12 @@ class WakeSleepGen:
 
     def get_train_data(self):
         while True:
-            # # full shuffle, only effective if train/test size smaller than inferred programs
-            # ids = np.arange(len(self.expressions))
-            # np.random.shuffle(ids)
-            # self.expressions = [self.expressions[index] for index in ids]
-            # self.labels = self.labels[ids]
-
+            
             self.correct_programs = []
             ids = np.arange(self.train_size)
+
             np.random.shuffle(ids)
+            
             for i in range(0, self.train_size, self.batch_size):
                 stacks = []
                 batch_exp = [self.expressions[index] for index in ids[i:i+self.batch_size]]
@@ -73,9 +70,6 @@ class WakeSleepGen:
                     if validity(program, len(program), len(program) - 1):
                         self.correct_programs.append(index)
                     else:
-                        # stack = np.zeros(
-                        #     (self.max_len + 1, self.max_len // 2 + 1, self.canvas_shape[0],
-                        #      self.canvas_shape[1]))
                         stack = np.zeros((64, 64))
                         stacks.append(stack)
                         continue

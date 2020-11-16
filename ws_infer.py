@@ -26,6 +26,9 @@ beam_width = 10
 """
 Infer programs on cad dataset
 """
+
+NUM_WRITE = 10
+
 def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_training):    
     config = read_config.Config("config_cad.yml")
 
@@ -142,7 +145,7 @@ def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_trai
             count += 1
                         
             if save_viz:
-                for j in range(0, config.batch_size):
+                for j in range(0, NUM_WRITE):
                     f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
                     a[0].imshow(data_[-1, j, 0, :, :], cmap="Greys_r")
                     a[0].axis("off")

@@ -12,6 +12,7 @@ from ws_train_inference import train_inference
 from globals import device
 import time
 import sys
+import matplotlib.pyplot as plt
 
 
 """
@@ -56,7 +57,7 @@ Runs the wake-sleep algorithm
 def wake_sleep(iterations):
     imitate_net = get_csgnet()
 
-    self_training = False
+    self_training = sys.argv[2] == 'van'
     
     inf_epochs = 0
     gen_epochs = 0
@@ -67,14 +68,15 @@ def wake_sleep(iterations):
 
     res = {'train':[], 'val':[], 'test':[], 'epochs':[]}
 
-    num_train = 100
-    num_test = 30
-    batch_size = 16
+    num_train = 10000
+    num_test = 3000
+    batch_size = 256
     
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
-        
-        infer_path = f"{exp_name}/inference"
+
+        infer_path = f"{exp_name}/inference{i}"
+        os.system(f'mkdir {infer_path}')
         infer_res = infer_programs(
             imitate_net, infer_path, num_train, num_test, batch_size, self_training
         )
@@ -82,6 +84,7 @@ def wake_sleep(iterations):
         for key in infer_res:
             res[key].append(infer_res[key])
 
+        res['epochs'].append(i)
         plt.clf()
         for key in ('train', 'val', 'test'):
             plt.plot(res['epochs'], res[key], label=key)
@@ -89,7 +92,10 @@ def wake_sleep(iterations):
         plt.legend()
         plt.savefig(f"{exp_name}/cd_plot.png")
         
-        inf_epochs += train_inference(imitate_net, infer_path + "/labels", self_training, ab)
+        inf_epochs += train_inference(
+            imitate_net, infer_path + "/labels", num_train, num_test, batch_size, self_training
+        )
+
         torch.save(imitate_net.state_dict(), f"{exp_name}/imitate_{i}.pth")
         print(f"Total inference epochs: {inf_epochs}")
 
