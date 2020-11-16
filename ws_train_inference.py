@@ -44,7 +44,7 @@ def train_inference(imitate_net, path, num_train, num_test, batch_size, self_tra
     )
         
     train_gen = generator.get_train_data()
-
+    
     cad_generator = Generator()
 
     val_gen = cad_generator.val_gen(

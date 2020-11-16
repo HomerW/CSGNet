@@ -32,8 +32,10 @@ def get_csgnet():
         mode=config.mode,
         num_draws=400,
         canvas_shape=config.canvas_shape)
+    imitate_net.load_state_dict(torch.load('trained_models/st_lest_best_dict_12.pt'))
     imitate_net = imitate_net.to(device)
 
+    """
     print("pre loading model")
     pretrained_dict = torch.load(
         'trained_models/mix_len_cr_percent_equal_batch_3_13_prop_100_hdsz_2048_batch_2000_optim_adam_lr_0.001_wd_0.0_enocoderdrop_0.0_drop_0.2_step_mix_mode_12.pth',
@@ -47,7 +49,8 @@ def get_csgnet():
     }
     imitate_net_dict.update(pretrained_dict)
     imitate_net.load_state_dict(imitate_net_dict)
-
+    """
+    
     return imitate_net
 
 

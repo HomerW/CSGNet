@@ -170,8 +170,52 @@ def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_trai
               'w') as outfile:
         json.dump(results, outfile)
 
+
+    # START STUFF
+
+    labels = torch.from_numpy(pred_labels).long()
+    labels = F.pad(labels, (0, 1), 'constant', 399)
+
+    with open("terminals.txt", "r") as file:
+        unique_draw = file.readlines()
+    for index, e in enumerate(unique_draw):
+        unique_draw[index] = e[0:-1]
+
+    parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len, config.canvas_shape)
+    expressions = parser.labels2exps(labels, labels.shape[1])
+    for index, exp in enumerate(expressions):
+        expressions[index] = exp.split("$")[0]
+
+    # NOW BATCH STUF
+
+    stacks = []
+
+    ids = np.arange(labels.shape[0])
+    batch_exp = [expressions[index] for index in ids]
+
+    for ind, exp in enumerate(batch_exp):
+        program = parser.Parser.parse(exp)
+        if validity(program, len(program), len(program)-1):
+            pass
+        else:
+            stack = np.zeros((64, 64))
+            stacks.append(stack)
+            continue
+
+        parser.sim.generate_stack(program)
+        stack = parser.sim.stack_t
+        stack = np.stack(stack, axis = 0)
+        stack = np.pad(stack, (((max_len + 1) - stack.shape[0], 0),
+                               (0, 0), (0, 0), (0, 0)))
+        stack = stack[-1, 0, :, :]
+        stacks.append(stack)
+
+    pred_image = np.stack(stacks, 0).astype(dtype=np.float32)
+    target_image = np.concatenate(Target_images, axis=0)
+    
     torch.save(pred_labels, labels_path + "lest_labels.pt")
-    torch.save(np.concatenate(Target_images, axis=0), labels_path + "real_images.pt")
+    torch.save(target_image, labels_path + "real_images.pt")
+    torch.save(pred_image, labels_path + "lest_images.pt")
 
     end = time.time()
     print(f"Inference time: {end-start}")
