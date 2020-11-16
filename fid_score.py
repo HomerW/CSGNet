@@ -30,6 +30,10 @@ import numpy as np
 import torch
 from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
+from src.utils import read_config
+from src.Models.models import ImitateJoint
+import matplotlib.pyplot as plt
+from globals import device
 
 from PIL import Image
 
@@ -39,7 +43,7 @@ except ImportError:
     # If not tqdm is not available, provide a mock version of it
     def tqdm(x): return x
 
-from fid_model import FIDModel
+from src.Models.models import Encoder
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
 from src.utils.generators.shapenet_generater import Generator
 from globals import device
@@ -79,18 +83,18 @@ def get_activations(generator, model, batch_size=50, dims=32, verbose=False):
         end = i + batch_size
 
         images = next(generator)
-        if len(images) == 2: # generated samples
-            images = images[0].to(device)
-            # images = torch.from_numpy(np.random.randint(0, 2, (1, 100, 1, 64, 64))).to(device).float()
+        images = torch.from_numpy(images).to(device)
+        if len(images.shape) == 3: # generated samples
+            images = torch.from_numpy(np.random.randint(0, 2, (100, 64, 64))).to(device).float()
+            pred = model.encode(images.unsqueeze(1).float())
         else: # cad data
-            images = torch.from_numpy(images).to(device)
+            pred = model.encode(images[-1, :, 0:1, :, :])
 
-        pred = model.encode(images[-1, :, 0:1, :, :])
-
-        # If model output is not scalar, apply global spatial average pooling.
-        # This happens if you choose a dimensionality not equal 2048.
-        if pred.size(2) != 1 or pred.size(3) != 1:
-            pred = adaptive_avg_pool2d(pred, output_size=(1, 1))
+        pred = pred.reshape((batch_size,-1, 1, 1))
+        # # If model output is not scalar, apply global spatial average pooling.
+        # # This happens if you choose a dimensionality not equal 2048.
+        # if pred.size(2) != 1 or pred.size(3) != 1:
+        #     pred = adaptive_avg_pool2d(pred, output_size=(1, 1))
 
         pred_arr[start:end] = pred.cpu().data.numpy().reshape(pred.size(0), -1)
 
@@ -190,37 +194,15 @@ def _compute_statistics_of_path(path, model, batch_size, dims):
 
     return m, s
 
-
-def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
+def calculate_fid_given_paths(model, images_path, model_path, batch_size, dims=32):
     """Calculates the FID of two paths"""
     if not os.path.exists(images_path):
         raise RuntimeError('Invalid path: %s' % images_path)
     if not os.path.exists(model_path):
         raise RuntimeError('Invalid path: %s' % model_path)
 
-    model = FIDModel()
-
-    # preload
-    pretrained_dict = torch.load(model_path, map_location=device)
-    model_dict = model.state_dict()
-    model_pretrained_dict = {
-        k: v
-        for k, v in pretrained_dict.items() if k in model_dict
-    }
-    model_dict.update(model_pretrained_dict)
-    model.load_state_dict(model_dict)
-
-    model = model.to(device)
-
-    generator = WakeSleepGen(f"{images_path}/labels.pt",
-                             f"{images_path}/val/labels.pt",
-                             batch_size=batch_size,
-                             test_size=3000).get_test_data()
-    # cad_generator = WakeSleepGen("wake_sleep_data/inference/best_simple_labels/labels/labels.pt",
-    #                          "wake_sleep_data/inference/best_simple_labels/labels/val/labels.pt",
-    #                          batch_size=batch_size,
-    #                          test_size=3000).get_test_data()
-    cad_generator = Generator().val_gen(batch_size=batch_size,
+    generator = FidGen(images_path).get_test_data()
+    cad_generator = Generator().test_gen(batch_size=batch_size,
                                         path="data/cad/cad.h5",
                                         if_augment=False)
 
@@ -233,9 +215,56 @@ def calculate_fid_given_paths(images_path, model_path, batch_size, dims=32):
 
     return fid_value
 
+def get_csgnet():
+    config = read_config.Config("config_synthetic.yml")
+
+    # Encoder
+    encoder_net = Encoder(config.encoder_drop)
+    encoder_net = encoder_net.to(device)
+
+    imitate_net = ImitateJoint(
+        hd_sz=config.hidden_size,
+        input_size=config.input_size,
+        encoder=encoder_net,
+        mode=config.mode,
+        num_draws=400,
+        canvas_shape=config.canvas_shape)
+    imitate_net = imitate_net.to(device)
+
+    print("pre loading model")
+    pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
+    imitate_net_dict = imitate_net.state_dict()
+    pretrained_dict = {
+        k: v
+        for k, v in pretrained_dict.items() if k in imitate_net_dict
+    }
+    imitate_net_dict.update(pretrained_dict)
+    imitate_net.load_state_dict(imitate_net_dict)
+
+    return imitate_net.encoder
+
+class FidGen:
+    def __init__(self, images_path):
+        self.images = torch.load(images_path)
+    def get_test_data(self):
+        while True:
+            for i in range(0, 3000, 100):
+                batch_images = self.images[i:i+100]
+                yield batch_images
 
 if __name__ == '__main__':
-    fid_value = calculate_fid_given_paths("wake_sleep_data/generator/0/",
-                                          "trained_models/fid-model-three.pth",
-                                          100)
-    print('FID: ', fid_value)
+    model = get_csgnet()
+    fids = []
+    for i in range(-1, 39):
+        fid_value = calculate_fid_given_paths(model,
+                                              f"fid_images/{i}.pt",
+                                              "trained_models/mix_len_cr_percent_equal_batch_3_13_prop_100_hdsz_2048_batch_2000_optim_adam_lr_0.001_wd_0.0_enocoderdrop_0.0_drop_0.2_step_mix_mode_12.pth",
+                                              100,
+                                              2048)
+
+        print('FID: ', fid_value)
+        fids.append(fid_value)
+
+    fig, ax = plt.subplots()
+    ax.plot(fids)
+    plt.savefig("fids.png")
