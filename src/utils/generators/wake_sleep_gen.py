@@ -19,14 +19,15 @@ class WakeSleepGen:
                  max_len,
                  self_training):
 
+        #print(self
         self.labels = torch.load(labels_path + "labels.pt", map_location=device)
         if isinstance(self.labels, np.ndarray):
             self.labels = torch.from_numpy(self.labels).to(device)
         self.labels = self.labels.long()
 
-        self.self_training = self_training
-        if self_training:
-            self.images = torch.load(labels_path + "images.pt")
+        self.images = torch.load(labels_path + "images.pt")
+        
+        self.self_training = self_training        
 
         # pad labels with a stop symbol, should be correct but need to confirm this
         # since infer_programs currently outputs len 13 labels

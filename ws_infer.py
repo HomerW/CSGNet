@@ -55,7 +55,6 @@ def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_trai
     os.makedirs(os.path.dirname(image_path), exist_ok=True)
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
     os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-    os.makedirs(os.path.dirname(labels_path+"val/"), exist_ok=True)
 
     generator = Generator()
 
@@ -171,9 +170,8 @@ def infer_programs(imitate_net, path, num_train, num_test, BATCH_SIZE, self_trai
               'w') as outfile:
         json.dump(results, outfile)
 
-    torch.save(pred_labels, labels_path + "labels.pt")
-    if self_training:
-        torch.save(np.concatenate(Target_images, axis=0), labels_path + "images.pt")
+    torch.save(pred_labels, labels_path + "lest_labels.pt")
+    torch.save(np.concatenate(Target_images, axis=0), labels_path + "real_images.pt")
 
     end = time.time()
     print(f"Inference time: {end-start}")
