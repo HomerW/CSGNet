@@ -70,7 +70,7 @@ def wake_sleep(iterations):
 
     num_train = 10000
     num_test = 3000
-    batch_size = 256
+    batch_size = 250
 
     mode = sys.argv[2]
     print(f"MODE {mode}")
