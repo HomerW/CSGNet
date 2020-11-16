@@ -163,7 +163,8 @@ def get_csgnet():
     imitate_net = imitate_net.to(device)
 
     print("pre loading model")
-    pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
+    # pretrained_dict = torch.load(config.pretrain_modelpath, map_location=device)
+    pretrained_dict = torch.load("trained_models/imitate2_10.pth", map_location=device)
     imitate_net_dict = imitate_net.state_dict()
     pretrained_dict = {
         k: v
@@ -217,23 +218,23 @@ def wake_sleep(iterations):
     inf_epochs = 0
     gen_epochs = 0
 
-    for i in range(iterations):
+    for i in range(11, iterations):
         print(f"WAKE SLEEP ITERATION {i}")
 
         if i == 0:
-            infer_path = f"wake_sleep_data_ab/inference/0"
+            infer_path = f"wake_sleep_data_frozen_lest_to_st/inference/0"
             # generate_path = f"wake_sleep_data/generator/0"
         else:
-            infer_path = "wake_sleep_data_ab/inference"
+            infer_path = "wake_sleep_data_frozen_lest_to_st/inference"
             # generate_path = "wake_sleep_data/generator"
-        infer_programs(imitate_net, infer_path, self_training=False, ab=5)
+        infer_programs(imitate_net, infer_path, self_training=True, ab=None)
 
         # imitate_net = get_blank_csgnet()
 
         # gen_epochs += train_generator(generator_net, infer_path, generate_path, 1)
-        inf_epochs += train_inference(imitate_net, infer_path + "/labels", self_training=False, ab=5)
+        inf_epochs += train_inference(imitate_net, infer_path + "/labels", self_training=True, ab=None)
 
-        torch.save(imitate_net.state_dict(), f"trained_models/imitate_ab_{i}.pth")
+        torch.save(imitate_net.state_dict(), f"trained_models/imitate_frozen_lest_to_st_{i}.pth")
         # torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
 
         print(f"Total inference epochs: {inf_epochs}")

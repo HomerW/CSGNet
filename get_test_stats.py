@@ -115,9 +115,10 @@ def infer_programs(imitate_net, self_training=False, ab=None):
             #         "{}.png".format(batch_idx * config.batch_size + j),
             #         transparent=0)
             #     plt.close("all")
-            with open("best_lest_expressions.txt", "w") as file:
+            with open("best_st_expressions.txt", "w") as file:
                 for e in pred_expressions:
                     file.write(f"{e}\n")
+            break
 
     return CDs / (config.test_size // config.batch_size)
 
@@ -135,7 +136,7 @@ imitate_net = ImitateJoint(
 imitate_net = imitate_net.to(device)
 
 try:
-    pretrained_dict = torch.load(f"trained_models/imitate2_30.pth", map_location=device)
+    pretrained_dict = torch.load("trained_models/imitate_st2_70.pth", map_location=device)
 except Exception as e:
     print(e)
 imitate_net_dict = imitate_net.state_dict()
@@ -146,7 +147,7 @@ pretrained_dict = {
 imitate_net_dict.update(pretrained_dict)
 imitate_net.load_state_dict(imitate_net_dict)
 
-infer_programs(imitate_net)
+print(infer_programs(imitate_net))
 
 # cd_list = []
 # for i in range(100):

@@ -53,6 +53,8 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, ab=
         path="data/cad/cad.h5",
         if_augment=False)
 
+    for parameter in imitate_net.encoder.parameters():
+        parameter.requires_grad = False
 
     optimizer = optim.Adam(
         [para for para in imitate_net.parameters() if para.requires_grad],
