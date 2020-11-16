@@ -13,7 +13,7 @@ from globals import device
 import time
 import sys
 import matplotlib.pyplot as plt
-
+import json
 
 """
 Get initial pretrained CSGNet inference network
@@ -57,7 +57,7 @@ Runs the wake-sleep algorithm
 def wake_sleep(iterations):
     imitate_net = get_csgnet()
 
-    self_training = sys.argv[2] == 'van'
+    self_training = False
     
     inf_epochs = 0
     gen_epochs = 0
@@ -71,6 +71,9 @@ def wake_sleep(iterations):
     num_train = 10000
     num_test = 3000
     batch_size = 256
+
+    mode = sys.argv[2]
+    print(f"MODE {mode}")
     
     for i in range(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
@@ -93,10 +96,13 @@ def wake_sleep(iterations):
         plt.savefig(f"{exp_name}/cd_plot.png")
         
         inf_epochs += train_inference(
-            imitate_net, infer_path + "/labels", num_train, num_test, batch_size, self_training
+            imitate_net, infer_path + "/labels", num_train, num_test, batch_size, self_training, i, mode
         )
 
-        torch.save(imitate_net.state_dict(), f"{exp_name}/imitate_{i}.pth")
+        with open(f'{exp_name}/all_res.org', 'w') as outfile:
+            json.dump(res, outfile)
+
+        #torch.save(imitate_net.state_dict(), f"{exp_name}/imitate_{i}.pth")
         print(f"Total inference epochs: {inf_epochs}")
 
         
