@@ -70,9 +70,9 @@ def wake_sleep(iterations):
 
     res = {'train':[], 'val':[], 'test':[], 'epochs':[]}
 
-    num_train = 100
-    num_test = 30
-    batch_size = 10
+    num_train = 10000
+    num_test = 3000
+    batch_size = 250
 
     mode = sys.argv[2]
     print(f"MODE {mode}")
