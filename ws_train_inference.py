@@ -57,6 +57,10 @@ def train_inference(imitate_net, path, num_train, num_test, batch_size, self_tra
         path="data/cad/cad.h5",
         if_augment=False)
 
+    # FREEZE!
+    for parameter in imitate_net.encoder.parameters():
+        parameter.requires_grad = False
+    
     optimizer = optim.Adam(
         [para for para in imitate_net.parameters() if para.requires_grad],
         weight_decay=config.weight_decay,

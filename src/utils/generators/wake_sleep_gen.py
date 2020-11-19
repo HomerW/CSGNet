@@ -41,7 +41,8 @@ class WakeSleepGen:
             self.unique_draw = file.readlines()
         for index, e in enumerate(self.unique_draw):
             self.unique_draw[index] = e[0:-1]
-
+        self.mode = mode
+            
         
     def get_train_data(self):
         while True:
@@ -55,12 +56,25 @@ class WakeSleepGen:
                 batch_labels = self.labels[ids[i:i+self.batch_size]]
                 
                 van_stacks = batch_images
-                batch_data = torch.stack((
-                    torch.from_numpy(lest_batch_images),
-                    torch.from_numpy(van_stacks)
-                )).transpose(0,1)[
-                    torch.arange(van_stacks.shape[0]),
-                    torch.rand(van_stacks.shape[0]).round().long()
-                ]
-                                                    
-                yield (batch_data, batch_labels)
+
+                if self.mode == 'LEST_ST':
+                                
+                    batch_data = torch.stack((
+                        torch.from_numpy(lest_batch_images),
+                        torch.from_numpy(van_stacks)
+                    )).transpose(0,1)[
+                        torch.arange(van_stacks.shape[0]),
+                        torch.rand(van_stacks.shape[0]).round().long()
+                    ]
+                    
+                    yield (batch_data, batch_labels)
+
+                elif self.mode == 'LEST':
+                    yield (torch.from_numpy(lest_batch_images), batch_labels)
+
+                elif self.mode == 'ST':
+                    yield (torch.from_numpy(van_stacks), batch_labels)
+
+                else:
+                    assert False, f'bad mode {self.mode}'
+                    

@@ -32,10 +32,9 @@ def get_csgnet():
         mode=config.mode,
         num_draws=400,
         canvas_shape=config.canvas_shape)
-    imitate_net.load_state_dict(torch.load('trained_models/st_lest_best_dict_12.pt'))
+    #imitate_net.load_state_dict(torch.load('trained_models/st_lest_best_dict_12.pt'))
     imitate_net = imitate_net.to(device)
 
-    """
     print("pre loading model")
     pretrained_dict = torch.load(
         'trained_models/mix_len_cr_percent_equal_batch_3_13_prop_100_hdsz_2048_batch_2000_optim_adam_lr_0.001_wd_0.0_enocoderdrop_0.0_drop_0.2_step_mix_mode_12.pth',
@@ -49,7 +48,7 @@ def get_csgnet():
     }
     imitate_net_dict.update(pretrained_dict)
     imitate_net.load_state_dict(imitate_net_dict)
-    """
+    
     
     return imitate_net
 
@@ -71,9 +70,9 @@ def wake_sleep(iterations):
 
     res = {'train':[], 'val':[], 'test':[], 'epochs':[]}
 
-    num_train = 10000
-    num_test = 3000
-    batch_size = 250
+    num_train = 100
+    num_test = 30
+    batch_size = 10
 
     mode = sys.argv[2]
     print(f"MODE {mode}")
@@ -89,8 +88,12 @@ def wake_sleep(iterations):
 
         for key in infer_res:
             res[key].append(infer_res[key])
+            
+        inf_epochs += train_inference(
+            imitate_net, infer_path + "/labels", num_train, num_test, batch_size, self_training, i, mode
+        )
 
-        res['epochs'].append(i)
+        res['epochs'].append(inf_epochs)
         plt.clf()
         for key in ('train', 'val', 'test'):
             plt.plot(res['epochs'], res[key], label=key)
@@ -98,15 +101,15 @@ def wake_sleep(iterations):
         plt.legend()
         plt.savefig(f"{exp_name}/cd_plot.png")
         
-        inf_epochs += train_inference(
-            imitate_net, infer_path + "/labels", num_train, num_test, batch_size, self_training, i, mode
-        )
-
         with open(f'{exp_name}/all_res.org', 'w') as outfile:
             json.dump(res, outfile)
-
-        #torch.save(imitate_net.state_dict(), f"{exp_name}/imitate_{i}.pth")
+    
         print(f"Total inference epochs: {inf_epochs}")
 
-        
+        if i >= 2:
+            old_infer_path = f"{exp_name}/inference{i-2}/labels"
+            os.system(f'rm {old_infer_path}/lest_labels.pt')
+            os.system(f'rm {old_infer_path}/real_images.pt')
+            os.system(f'rm {old_infer_path}/lest_images.pt')
+                        
 wake_sleep(200)
