@@ -14,4 +14,4 @@ perturbations_more
 *.sh*
 wake_sleep_data*
 logo_images
-fid_images
+fid_images*

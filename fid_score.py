@@ -34,7 +34,7 @@ from src.utils import read_config
 from src.Models.models import ImitateJoint
 import matplotlib.pyplot as plt
 from globals import device
-
+from autoencoder import Autoencoder
 from PIL import Image
 
 try:
@@ -85,14 +85,14 @@ def get_activations(generator, model, batch_size=50, dims=32, verbose=False):
         images = next(generator)
         images = torch.from_numpy(images).to(device)
         if len(images.shape) == 3: # generated samples
-            images = torch.from_numpy(np.random.randint(0, 2, (100, 64, 64))).to(device).float()
+            # images = torch.from_numpy(np.random.randint(0, 2, (100, 64, 64))).to(device).float()
             pred = model.encode(images.unsqueeze(1).float())
         else: # cad data
             pred = model.encode(images[-1, :, 0:1, :, :])
 
         pred = pred.reshape((batch_size,-1, 1, 1))
-        # # If model output is not scalar, apply global spatial average pooling.
-        # # This happens if you choose a dimensionality not equal 2048.
+        # If model output is not scalar, apply global spatial average pooling.
+        # This happens if you choose a dimensionality not equal 2048.
         # if pred.size(2) != 1 or pred.size(3) != 1:
         #     pred = adaptive_avg_pool2d(pred, output_size=(1, 1))
 
@@ -202,13 +202,17 @@ def calculate_fid_given_paths(model, images_path, model_path, batch_size, dims=3
         raise RuntimeError('Invalid path: %s' % model_path)
 
     generator = FidGen(images_path).get_test_data()
+    # generator2 = FidGen(model_path).get_test_data()
     cad_generator = Generator().test_gen(batch_size=batch_size,
                                         path="data/cad/cad.h5",
                                         if_augment=False)
+    # cad_generator2 = Generator().val_gen(batch_size=batch_size,
+    #                                     path="data/cad/cad.h5",
+    #                                     if_augment=False)
 
-    m1, s1 = calculate_activation_statistics(generator, model, batch_size,
+    m1, s1 = calculate_activation_statistics(cad_generator, model, batch_size,
                                          dims)
-    m2, s2 = calculate_activation_statistics(cad_generator, model, batch_size,
+    m2, s2 = calculate_activation_statistics(generator, model, batch_size,
                                          dims)
 
     fid_value = calculate_frechet_distance(m1, s1, m2, s2)
@@ -253,18 +257,30 @@ class FidGen:
                 yield batch_images
 
 if __name__ == '__main__':
+    # model = Autoencoder().to(device)
+    # model.load_state_dict(torch.load("trained_models/fid-model2.pth"))
     model = get_csgnet()
     fids = []
-    for i in range(-1, 39):
-        fid_value = calculate_fid_given_paths(model,
-                                              f"fid_images/{i}.pt",
-                                              "trained_models/mix_len_cr_percent_equal_batch_3_13_prop_100_hdsz_2048_batch_2000_optim_adam_lr_0.001_wd_0.0_enocoderdrop_0.0_drop_0.2_step_mix_mode_12.pth",
-                                              100,
-                                              2048)
+    fid_value = calculate_fid_given_paths(model,
+                                          f"fid_images2/base.pt",
+                                          "trained_models/mix_len_cr_percent_equal_batch_3_13_prop_100_hdsz_2048_batch_2000_optim_adam_lr_0.001_wd_0.0_enocoderdrop_0.0_drop_0.2_step_mix_mode_12.pth",
+                                          # "random_images.pt",
+                                          100,
+                                          2048)
+    print(fid_value)
+    # for i in range(17):
+    #     fid_value = calculate_fid_given_paths(model,
+    #                                           f"fid_images2/{i}.pt",
+    #                                           # "trained_models/mix_len_cr_percent_equal_batch_3_13_prop_100_hdsz_2048_batch_2000_optim_adam_lr_0.001_wd_0.0_enocoderdrop_0.0_drop_0.2_step_mix_mode_12.pth",
+    #                                           "random_images.pt",
+    #                                           100,
+    #                                           2048)
+    #
+    #     print('FID: ', fid_value)
+    #     fids.append(fid_value)
 
-        print('FID: ', fid_value)
-        fids.append(fid_value)
-
-    fig, ax = plt.subplots()
-    ax.plot(fids)
-    plt.savefig("fids.png")
+    # fig, ax = plt.subplots()
+    # ax.plot(fids)
+    # plt.savefig("fids.png")
+    # with open("fids_random.txt", "w") as file:
+    #     for f in fids:
