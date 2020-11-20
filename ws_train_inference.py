@@ -27,7 +27,7 @@ TODO: train to convergence and not number of epochs
 """
 def train_inference(imitate_net, path, max_epochs=None, self_training=False, ab=None):
     if max_epochs is None:
-        epochs = 100
+        epochs = 1000
     else:
         epochs = max_epochs
 
@@ -43,7 +43,7 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, ab=
                              train_size=train_size,
                              canvas_shape=config.canvas_shape,
                              max_len=max_len,
-                             self_training=self_training)
+                             self_training=True)
 
     train_gen = generator.get_train_data()
 
@@ -72,7 +72,7 @@ def train_inference(imitate_net, path, max_epochs=None, self_training=False, ab=
 
     best_test_cd = 1e20
 
-    patience = 5
+    patience = 20
     num_worse = 0
 
     for epoch in range(epochs):

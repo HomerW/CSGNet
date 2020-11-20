@@ -3,8 +3,9 @@ from torch import nn, optim
 from torch.nn import functional as F
 import numpy as np
 from src.Models.models import Encoder
-from src.Models.models import ImitateJoint
+from src.Models.models import ImitateJoint, ParseModelOutput
 from src.utils import read_config
+from src.utils.train_utils import image_from_expressions
 from src.utils.generators.wake_sleep_gen import WakeSleepGen
 import matplotlib
 import matplotlib.pyplot as plt
@@ -19,9 +20,13 @@ import time
 inference_train_size = 10000
 inference_test_size = 3000
 vocab_size = 400
-generator_hidden_dim = 128
-generator_latent_dim = 20
 max_len = 13
+generator_latent_dim = 20
+
+with open("terminals.txt", "r") as file:
+    unique_draw = file.readlines()
+for index, e in enumerate(unique_draw):
+    unique_draw[index] = e[0:-1]
 
 """
 Trains VAE to convergence on programs from inference network
@@ -34,7 +39,6 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
         epochs = max_epochs
 
     labels = torch.load(f"{load_path}/labels/labels.pt", map_location=device)
-    # labels = torch.load("wake_sleep_data/inference/best_simple_labels/labels/labels.pt", map_location=device)
 
     # pad with a start and stop token
     labels = np.pad(labels, ((0, 0), (1, 1)), constant_values=399)
@@ -46,9 +50,9 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
     generator_net.train()
 
     best_train_loss = 1e20
-    patience = 5
+    patience = 20
     num_worse = 0
-    best_gen_dict = generator_net.state_dict()
+    best_gen_dict = torch.save(generator_net.state_dict(), f"{save_path}/best_gen_dict.pth")
 
     for epoch in range(epochs):
         start = time.time()
@@ -91,10 +95,10 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
         else:
             num_worse = 0
             best_train_loss = train_loss
-            best_gen_dict = generator_net.state_dict()
+            best_gen_dict = torch.save(generator_net.state_dict(), f"{save_path}/best_gen_dict.pth")
         if num_worse >= patience:
             # load the best model and stop training
-            generator_net.load_state_dict(best_gen_dict)
+            generator_net.load_state_dict(torch.load(f"{save_path}/best_gen_dict.pth"))
             break
 
         end = time.time()
@@ -106,22 +110,33 @@ def train_generator(generator_net, load_path, save_path, max_epochs=None):
         batch_tokens = generator_net.decode(batch_latents, timesteps=labels.shape[1] - 1)
         batch_tokens = batch_tokens.permute(1, 0, 2).max(dim=2)[1][:, :-1]
         train_tokens[i:i+batch_size] = batch_tokens
-    test_tokens = torch.zeros((inference_test_size, max_len))
-    for i in range(0, inference_test_size, batch_size):
-        batch_latents = torch.randn(1, batch_size, generator_latent_dim).to(device)
-        batch_tokens = generator_net.decode(batch_latents, timesteps=labels.shape[1] - 1)
-        batch_tokens = batch_tokens.permute(1, 0, 2).max(dim=2)[1][:, :-1]
-        test_tokens[i:i+batch_size] = batch_tokens
+    # test_tokens = torch.zeros((inference_test_size, max_len))
+    # for i in range(0, inference_test_size, batch_size):
+    #     batch_latents = torch.randn(1, batch_size, generator_latent_dim).to(device)
+    #     batch_tokens = generator_net.decode(batch_latents, timesteps=labels.shape[1] - 1)
+    #     batch_tokens = batch_tokens.permute(1, 0, 2).max(dim=2)[1][:, :-1]
+    #     test_tokens[i:i+batch_size] = batch_tokens
 
     os.makedirs(os.path.dirname(f"{save_path}/"), exist_ok=True)
     torch.save(train_tokens, f"{save_path}/labels.pt")
-    os.makedirs(os.path.dirname(f"{save_path}/val/"), exist_ok=True)
-    torch.save(test_tokens, f"{save_path}/val/labels.pt")
+    # os.makedirs(os.path.dirname(f"{save_path}/val/"), exist_ok=True)
+    # torch.save(test_tokens, f"{save_path}/val/labels.pt")
 
-    fid_value = calculate_fid_given_paths(f"{save_path}",
-                                          f"trained_models/fid-model-two.pth",
-                                          100)
-    print('FID: ', fid_value)
+    # fid_value = calculate_fid_given_paths(f"{save_path}",
+    #                                       f"trained_models/fid-model-two.pth",
+    #                                       100)
+    # print('FID: ', fid_value)
+
+    # find expression from labels
+    parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len, [64, 64])
+    expressions = [""] * inference_train_size
+    for i in range(inference_train_size):
+        for j in range(max_len):
+            expressions[i] += unique_draw[int(train_tokens[i, j])]
+    for index, prog in enumerate(expressions):
+        expressions[index] = prog.split("$")[0]
+    pred_images = image_from_expressions(parser, expressions).astype(np.float32)
+    torch.save(pred_images, f"{save_path}/images.pt")
 
     return epoch + 1
 
@@ -213,7 +228,7 @@ Runs the wake-sleep algorithm
 """
 def wake_sleep(iterations):
     imitate_net = get_csgnet()
-    # generator_net = VAE().to(device)
+    generator_net = VAE().to(device)
 
     inf_epochs = 0
     gen_epochs = 0
@@ -222,23 +237,23 @@ def wake_sleep(iterations):
         print(f"WAKE SLEEP ITERATION {i}")
 
         if i == 0:
-            infer_path = f"wake_sleep_data_frozen_lest_to_st/inference/0"
-            # generate_path = f"wake_sleep_data/generator/0"
+            infer_path = f"wake_sleep_data_gen/inference/0"
+            generate_path = f"wake_sleep_data_gen/generator/0"
         else:
-            infer_path = "wake_sleep_data_frozen_lest_to_st/inference"
-            # generate_path = "wake_sleep_data/generator"
-        infer_programs(imitate_net, infer_path, self_training=True, ab=None)
+            infer_path = "wake_sleep_data_gen/inference"
+            generate_path = "wake_sleep_data_gen/generator"
+            infer_programs(imitate_net, infer_path, self_training=False, ab=None)
 
         # imitate_net = get_blank_csgnet()
 
-        # gen_epochs += train_generator(generator_net, infer_path, generate_path, 1)
-        inf_epochs += train_inference(imitate_net, infer_path + "/labels", self_training=True, ab=None)
+        gen_epochs += train_generator(generator_net, infer_path, generate_path)
+        inf_epochs += train_inference(imitate_net, generate_path, self_training=False, ab=None)
 
-        torch.save(imitate_net.state_dict(), f"trained_models/imitate_frozen_lest_to_st_{i}.pth")
-        # torch.save(generator_net.state_dict(), f"trained_models/generator.pth")
+        torch.save(imitate_net.state_dict(), f"trained_models/imitate_gen_{i}.pth")
+        torch.save(generator_net.state_dict(), f"trained_models/generator_{i}.pth")
 
         print(f"Total inference epochs: {inf_epochs}")
-        # print(f"Total generator epochs: {gen_epochs}")
+        print(f"Total generator epochs: {gen_epochs}")
 
         # allowed_time -= infer_time + (inf_factor * inf_epochs) + (gen_factor * gen_epochs)
         # if allowed_time <= 0:
