@@ -5,14 +5,14 @@ The dependencies can be installed with conda.
 conda env create -f environment.yml
 
 The pretrained model provided in the CSGNet repository should be placed in
-"trained_models/sp.pt." The CAD data from the same repository should be placed
+"trained_models/sp.pt". The CAD data from the same repository should be placed
 in the "data" directory.
 
 lest.py starts a run of LEST, saving models and intermediate training ouput to
 the directory "train_out".
 
-infer.py and train.py contain the logic for inferring programs using the inference
-network and training the inference network.
+infer.py and train.py contain the logic for inferring programs and training the
+inference network.
 
 rl.py runs the reinforcement learning comparison method.
 
