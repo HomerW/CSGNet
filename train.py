@@ -29,7 +29,7 @@ def train(csgnet, path, max_epochs=None):
     for index, e in enumerate(unique_draw):
         unique_draw[index] = e[0:-1]
 
-    config = read_config.Config("config_synthetic.yml")
+    config = read_config.Config("config_lest.yml")
 
     generator = LestGen(f"{path}/",
                         batch_size=config.batch_size,

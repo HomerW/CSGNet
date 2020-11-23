@@ -12,7 +12,7 @@ Infer programs on cad dataset
 """
 def infer_programs(imitate_net, path):
 
-    config = read_config.Config("config_cad.yml")
+    config = read_config.Config("config_rl.yml")
     max_len = 13
     beam_width = 10
 

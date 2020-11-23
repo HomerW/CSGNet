@@ -13,7 +13,7 @@ device = torch.device("cuda")
 Get initial pretrained CSGNet inference network
 """
 def get_csgnet():
-    config = read_config.Config("config_synthetic.yml")
+    config = read_config.Config("config_lest.yml")
 
     # Encoder
     encoder_net = Encoder(config.encoder_drop)

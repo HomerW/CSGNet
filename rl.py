@@ -18,7 +18,7 @@ from src.utils.train_utils import prepare_input_op, chamfer, beams_parser, valid
 if len(sys.argv) > 1:
     config = read_config.Config(sys.argv[1])
 else:
-    config = read_config.Config("config_cad.yml")
+    config = read_config.Config("config_rl.yml")
 
 max_len = 15
 reward = "chamfer"

@@ -19,8 +19,7 @@ rl.py runs the reinforcement learning comparison method.
 nn.py contains code for computing bidirectional average nearest neighbor distance
 using Chamfer Distance.
 
-config_synthetic.yml and config_cad.yml contain hyperparameters for LEST and RL
-respectively.
+config_lest.yml and config_rl.yml contain hyperparameters for LEST and RL.
 
 
 
