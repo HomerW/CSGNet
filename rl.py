@@ -14,7 +14,6 @@ from src.utils.generators.shapenet_generater import Generator
 from src.utils.learn_utils import LearningRate
 from src.utils.reinforce import Reinforce
 from src.utils.train_utils import prepare_input_op, chamfer, beams_parser, validity, image_from_expressions
-import time
 
 if len(sys.argv) > 1:
     config = read_config.Config(sys.argv[1])
@@ -26,7 +25,6 @@ reward = "chamfer"
 power = 20
 DATA_PATH = "data/cad/cad.h5"
 model_name = config.model_path.format(config.mode)
-config.write_config("log/configs/{}_config.json".format(model_name))
 config.train_size = 10000
 config.test_size = 3000
 print(config.config)
@@ -101,44 +99,7 @@ imitate_net.epsilon = config.eps
 num_traj = config.num_traj
 training_reward_save = 0
 
-
-def get_cd(imitate_net, data, one_hot_labels):
-    beam_width = 10
-    all_beams, next_beams_prob, all_inputs = imitate_net.beam_search(
-        [data, one_hot_labels], beam_width, 13)
-
-    beam_labels = beams_parser(
-        all_beams, config.batch_size, beam_width=beam_width)
-
-    beam_labels_numpy = np.zeros(
-        (config.batch_size * beam_width, 13), dtype=np.int32)
-    for i in range(config.batch_size):
-        beam_labels_numpy[i * beam_width:(
-            i + 1) * beam_width, :] = beam_labels[i]
-
-    # find expression from these predicted beam labels
-    expressions = [""] * config.batch_size * beam_width
-    for i in range(config.batch_size * beam_width):
-        for j in range(13):
-            expressions[i] += unique_draw[beam_labels_numpy[i, j]]
-    for index, prog in enumerate(expressions):
-        expressions[index] = prog.split("$")[0]
-
-    predicted_images = image_from_expressions(parser, expressions)
-    target_images = data_[-1, :, 0, :, :].astype(dtype=bool)
-    target_images_new = np.repeat(
-        target_images, axis=0, repeats=beam_width)
-
-    beam_CD = chamfer(target_images_new, predicted_images)
-
-    CD = np.zeros((config.batch_size, 1))
-    for r in range(config.batch_size):
-        CD[r, 0] = min(beam_CD[r * beam_width:(r + 1) * beam_width])
-
-    return np.mean(CD)
-
 for epoch in range(config.epochs):
-    start = time.time()
     train_loss = 0
     total_reward = 0
     imitate_net.epsilon = 1
@@ -197,9 +158,6 @@ for epoch in range(config.epochs):
               total_reward / (config.train_size //
                               (config.batch_size)), epoch)
 
-    end = time.time()
-    print(f"TIME:{end - start}")
-
     CD = 0
     test_losses = 0
     total_reward = 0
@@ -227,10 +185,6 @@ for epoch in range(config.epochs):
             R = R[0]
             loss = loss + reinforce.pg_loss_var(R, samples, outputs)
 
-            imitate_net.mode = 1
-            CD += get_cd(imitate_net, data, one_hot_labels)
-            imitate_net.mode = 2
-
             if reward == "chamfer":
                 Rs = Rs + R
 
@@ -243,15 +197,13 @@ for epoch in range(config.epochs):
     total_reward = total_reward / (config.test_size // config.batch_size)
 
     test_loss = test_losses.cpu().numpy() / (config.test_size // config.batch_size)
-    test_cd = CD / (config.test_size // config.batch_size)
     print('test_loss', test_loss, epoch)
     print('test_reward', total_reward, epoch)
     if config.lr_sch:
         # Negative of the rewards should be minimized
         reduce_plat.reduce_on_plateu(-total_reward)
 
-    print("Epoch {}/{}=>  train_loss: {}, test_loss: {}, test_cd: {}".format(epoch, config.epochs,
-                                      mean_train_loss.cpu().numpy(), test_loss, test_cd))
+    print("Epoch {}/{}=>  train_loss: {}, test_loss: {}".format(epoch, config.epochs, mean_train_loss.cpu().numpy(), test_loss))
     del test_losses
 
     # Save when test reward is increased

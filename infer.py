@@ -1,38 +1,20 @@
 import torch
-import torch.utils.data
-from torch import nn, optim
-from torch.nn import functional as F
-from torchvision import datasets, transforms
-from torchvision.utils import save_image
 import numpy as np
-from src.Models.loss import losses_joint
-from src.Models.models import Encoder
 from src.Models.models import ImitateJoint, ParseModelOutput
 from src.utils import read_config
-from src.utils.learn_utils import LearningRate
-from src.utils.train_utils import prepare_input_op, cosine_similarity, chamfer, beams_parser, validity, image_from_expressions, stack_from_expressions
-import matplotlib
-import matplotlib.pyplot as plt
-from src.utils.refine import optimize_expression
-import os
-import json
+from src.utils.train_utils import prepare_input_op, chamfer, beams_parser, image_from_expressions
 from src.utils.generators.shapenet_generater import Generator
-from globals import device
-import time
 
-inference_train_size = 10000
-inference_test_size = 3000
-vocab_size = 400
-max_len = 13
-beam_width = 10
+device = torch.device("cuda")
 
 """
 Infer programs on cad dataset
 """
-def infer_programs(imitate_net, path, self_training=False, ab=None):
-    save_viz = False
+def infer_programs(imitate_net, path):
 
     config = read_config.Config("config_cad.yml")
+    max_len = 13
+    beam_width = 10
 
     # Load the terminals symbols of the grammar
     with open("terminals.txt", "r") as file:
@@ -47,18 +29,7 @@ def infer_programs(imitate_net, path, self_training=False, ab=None):
     parser = ParseModelOutput(unique_draw, max_len // 2 + 1, max_len,
                               config.canvas_shape)
     pred_expressions = []
-    if ab is not None:
-        pred_labels = np.zeros((config.train_size * ab, max_len))
-    else:
-        pred_labels = np.zeros((config.train_size, max_len))
-    image_path = f"{path}/images/"
-    results_path = f"{path}/results/"
-    labels_path = f"{path}/labels/"
-
-    os.makedirs(os.path.dirname(image_path), exist_ok=True)
-    os.makedirs(os.path.dirname(results_path), exist_ok=True)
-    os.makedirs(os.path.dirname(labels_path), exist_ok=True)
-    os.makedirs(os.path.dirname(labels_path+"val/"), exist_ok=True)
+    pred_labels = np.zeros((config.train_size, max_len))
 
     generator = Generator()
 
@@ -67,16 +38,9 @@ def infer_programs(imitate_net, path, self_training=False, ab=None):
         path="data/cad/cad.h5",
         if_augment=False)
 
-    val_gen = generator.val_gen(
-        batch_size=config.batch_size,
-        path="data/cad/cad.h5",
-        if_augment=False)
-
     Rs = 0
     CDs = 0
     Target_images = []
-
-    start = time.time()
     pred_images = np.zeros((config.train_size, 64, 64))
     for batch_idx in range(config.train_size // config.batch_size):
         with torch.no_grad():
@@ -114,30 +78,14 @@ def infer_programs(imitate_net, path, self_training=False, ab=None):
             target_images_new = np.repeat(
                 target_images, axis=0, repeats=beam_width)
 
-            # beam_R = np.sum(np.logical_and(target_images_new, predicted_images),
-            #                 (1, 2)) / np.sum(np.logical_or(target_images_new, predicted_images), (1, 2))
-            #
-            # R = np.zeros((config.batch_size, 1))
-            # for r in range(config.batch_size):
-            #     R[r, 0] = max(beam_R[r * beam_width:(r + 1) * beam_width])
-            #
-            # Rs += np.mean(R)
-
             beam_CD = chamfer(target_images_new, predicted_images)
 
             # select best expression by chamfer distance
-            if ab is None:
-                best_labels = np.zeros((config.batch_size, max_len))
-                for r in range(config.batch_size):
-                    idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
-                    best_labels[r] = beam_labels[r][idx]
-                pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
-            else:
-                best_labels = np.zeros((config.batch_size*ab, max_len))
-                for r in range(config.batch_size):
-                    sorted_idx = np.argsort(beam_CD[r * beam_width:(r + 1) * beam_width])[:ab]
-                    best_labels[r*ab:r*ab + ab] = beam_labels[r][sorted_idx]
-                pred_labels[batch_idx*config.batch_size*ab:batch_idx*config.batch_size*ab + config.batch_size*ab] = best_labels
+            best_labels = np.zeros((config.batch_size, max_len))
+            for r in range(config.batch_size):
+                idx = np.argmin(beam_CD[r * beam_width:(r + 1) * beam_width])
+                best_labels[r] = beam_labels[r][idx]
+            pred_labels[batch_idx*config.batch_size:batch_idx*config.batch_size + config.batch_size] = best_labels
 
             CD = np.zeros((config.batch_size, 1))
             for r in range(config.batch_size):
@@ -146,47 +94,10 @@ def infer_programs(imitate_net, path, self_training=False, ab=None):
 
             CDs += np.mean(CD)
 
-            if save_viz:
-                for j in range(0, config.batch_size):
-                    f, a = plt.subplots(1, beam_width + 1, figsize=(30, 3))
-                    a[0].imshow(data_[-1, j, 0, :, :], cmap="Greys_r")
-                    a[0].axis("off")
-                    a[0].set_title("target")
-                    for i in range(1, beam_width + 1):
-                        a[i].imshow(
-                            predicted_images[j * beam_width + i - 1],
-                            cmap="Greys_r")
-                        a[i].set_title("{}".format(i))
-                        a[i].axis("off")
-                    plt.savefig(
-                        image_path +
-                        "{}.png".format(batch_idx * config.batch_size + j),
-                        transparent=0)
-                    plt.close("all")
+    print(f"TRAIN CD: {CDs / (config.train_size // config.batch_size)}")
 
-                    save_viz = False
-
-    print(
-        "Inferring cad average chamfer distance: {}".format(
-            CDs / (config.train_size // config.batch_size)),
-        flush=True)
-
-    Rs = Rs / (config.train_size // config.batch_size)
-    CDs = CDs / (config.train_size // config.batch_size)
-    print(Rs, CDs)
-    results = {"iou": Rs, "chamferdistance": CDs}
-
-    with open(results_path + "results_beam_width_{}.org".format(beam_width),
-              'w') as outfile:
-        json.dump(results, outfile)
-
-    torch.save(pred_labels, labels_path + "labels.pt")
-    # torch.save(pred_images, labels_path + "images.pt")
-    if self_training:
-        if ab is None:
-            torch.save(np.concatenate(Target_images, axis=0), labels_path + "images.pt")
-        else:
-            torch.save(np.repeat(np.concatenate(Target_images, axis=0), ab, axis=0), labels_path + "images.pt")
+    torch.save(pred_labels, path + "labels.pt")
+    torch.save(pred_images, path + "images.pt")
 
     test_gen = generator.test_gen(
         batch_size=config.batch_size,
@@ -242,6 +153,3 @@ def infer_programs(imitate_net, path, self_training=False, ab=None):
             CDs += np.mean(CD)
 
     print(f"TEST CD: {CDs / (config.test_size // config.batch_size)}")
-
-    end = time.time()
-    print(f"Inference time: {end-start}")

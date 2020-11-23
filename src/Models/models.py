@@ -117,16 +117,12 @@ class ImitateJoint(nn.Module):
             '''
             data, input_op, program_len = x
 
-            # assert data.size()[0] == program_len + 1, "Incorrect stack size!!"
-            # batch_size = data.size()[1]
             batch_size = data.size()[0]
             h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
-            # x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
             x_f = self.encoder.encode(data.unsqueeze(1))
             x_f = x_f.view(1, batch_size, self.in_sz)
             # remove stop token for input to decoder
             input_op_rnn = self.relu(self.dense_input_op(input_op))[:, :-1, :].permute(1, 0, 2)
-            # input_op_rnn = torch.zeros((program_len+1, batch_size, self.input_op_sz)).cuda()
             x_f = x_f.repeat(program_len+1, 1, 1)
             input = torch.cat((self.drop(x_f), input_op_rnn), 2)
             output, h = self.rnn(input, h)
@@ -193,10 +189,8 @@ class ImitateJoint(nn.Module):
         """
         if self.mode == 1:
             data, input_op, program_len = data
-            # batch_size = data.size()[1]
             batch_size = data.size()[0]
             h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
-            # x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
             x_f = self.encoder.encode(data.unsqueeze(1))
             x_f = x_f.view(1, batch_size, self.in_sz)
             outputs = []
@@ -207,8 +201,6 @@ class ImitateJoint(nn.Module):
                 input_op_rnn = self.relu(self.dense_input_op(last_output))
                 input_op_rnn = input_op_rnn.view(1, batch_size,
                                                  self.input_op_sz)
-                # input_op_rnn = torch.zeros((1, batch_size,
-                #                                 self.input_op_sz)).cuda()
                 input = torch.cat((self.drop(x_f), input_op_rnn), 2)
                 h, _ = self.rnn(input, h)
                 hd = self.relu(self.dense_fc_1(self.drop(h[0])))
@@ -238,13 +230,11 @@ class ImitateJoint(nn.Module):
         # Beam, dictionary, with elements as list. Each element of list
         # containing index of the selected output and the corresponding
         # probability.
-        # batch_size = data.size()[1]
         batch_size = data.size()[0]
         h = Variable(torch.zeros(1, batch_size, self.hd_sz)).cuda()
         # Last beams' data
         B = {0: {"input": input_op, "h": h}, 1: None}
         next_B = {}
-        # x_f = self.encoder.encode(data[-1, :, 0:1, :, :])
         x_f = self.encoder.encode(data.unsqueeze(1))
         x_f = x_f.view(1, batch_size, self.in_sz)
         # List to store the probs of last time step
@@ -379,7 +369,6 @@ class ParseModelOutput:
             return expressions
         stacks = []
         for index, exp in enumerate(expressions):
-            # print(exp)
             program = self.Parser.parse(exp)
             if validity(program, len(program), len(program) - 1):
                 correct_programs.append(index)
